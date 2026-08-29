@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./arena.css";
 import "./arena-modes.css";
+import "./arena-match.css";
 
 export const metadata: Metadata = {
   title: {
