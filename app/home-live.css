@@ -1,0 +1,42 @@
+.arena-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.4rem;
+}
+
+.arena-home-actions .button {
+  margin: 0;
+}
+
+.arena-watch-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--paper-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.arena-watch-link:hover {
+  color: var(--signal-hot);
+}
+
+@media (max-width: 560px) {
+  .arena-home-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .arena-home-actions .button {
+    justify-content: center;
+  }
+
+  .arena-watch-link {
+    justify-content: center;
+    min-height: 44px;
+  }
+}
