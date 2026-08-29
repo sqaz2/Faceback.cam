@@ -3,8 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Copy, Crown, Radio, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Copy, Crown, Radio, RotateCcw, Sparkles, Trophy, Users } from "lucide-react";
 import { GAME_MODES, RANDOM_MODE, getGameMode, type ModeChoice } from "./game-modes";
+import {
+  MATCH_FORMATS,
+  MATCH_LENGTHS,
+  ROTATION_MODES,
+  TEAM_SIGNAL,
+  TEAM_STATIC,
+  teamLabel,
+  type MatchFormat,
+  type MatchLength,
+  type RotationMode,
+} from "./match-config";
 
 type Teachback = {
   intent: string;
@@ -18,16 +29,39 @@ type Winner = {
   content: string;
   author: string;
   profileHandle: string;
+  team: string;
   voteCount: number;
   teachback: Teachback | null;
 };
 
+type ArenaPlayer = {
+  id: number;
+  displayName: string;
+  profileHandle: string;
+  score: number;
+  team: string;
+};
+
 type ArenaState = {
-  room: { code: string; phase: "lobby" | "answering" | "voting" | "results"; roundNumber: number; maxPlayers: number; isHost: boolean };
-  me: { id: number } | null;
-  players: Array<{ id: number; displayName: string; profileHandle: string; score: number }>;
-  round: { id: number; prompt: string; mode: string; roundNumber: number } | null;
-  submissions: Array<{ id: number; content: string; isMine: boolean; voteCount?: number; author?: string; profileHandle?: string }>;
+  room: {
+    code: string;
+    phase: "lobby" | "answering" | "voting" | "results";
+    roundNumber: number;
+    maxPlayers: number;
+    isHost: boolean;
+    matchLength: number;
+    matchFormat: MatchFormat;
+    rotationMode: RotationMode;
+    matchStatus: "setup" | "active" | "finished";
+    matchNumber: number;
+    matchFinished: boolean;
+    teamScores: { signal: number; static: number };
+  };
+  me: { id: number; team: string } | null;
+  players: ArenaPlayer[];
+  round: { id: number; prompt: string; mode: string; roundNumber: number; matchNumber: number; winningTeam: string } | null;
+  roundHistory: Array<{ roundNumber: number; mode: string; winningTeam: string }>;
+  submissions: Array<{ id: number; content: string; isMine: boolean; voteCount?: number; author?: string; profileHandle?: string; team?: string }>;
   mySubmissionId: number | null;
   mySubmission: string;
   myVoteId: number | null;
@@ -82,18 +116,18 @@ export function ArenaLobby() {
       <section className="arena-landing">
         <p className="eyebrow"><Radio size={16} /> LIVE CREATIVE ARENA</p>
         <h1>Make fast. Vote blind. <span>Study what won.</span></h1>
-        <p className="arena-lede">Rap battles, punchlines, hooks, pitches, captions and remixes. Everyone gets the same constraint. Nobody sees the creator until voting is over.</p>
+        <p className="arena-lede">Three- or five-round creative matches: solo ladders or team battles across rap, punchlines, hooks, pitches, captions and remixes.</p>
         <div className="arena-entry-grid">
           <article className="arena-entry-card arena-entry-primary">
             <Sparkles size={26} />
-            <h2>Start a room</h2>
-            <p>Host up to eight creators, choose the game and control when the room moves from making to voting.</p>
+            <h2>Start a match</h2>
+            <p>Host up to eight creators, pick solo or teams, then run a short competition without losing the room between rounds.</p>
             <button className="button button-primary" onClick={createRoom} disabled={busy}>Create room <ArrowRight size={18} /></button>
           </article>
           <article className="arena-entry-card">
             <Users size={26} />
             <h2>Join a room</h2>
-            <p>Got an invite code? Drop in between rounds and start creating.</p>
+            <p>Got an invite code? Drop in between rounds and join the current match.</p>
             <div className="arena-code-entry">
               <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={5} placeholder="ABCDE" aria-label="Room code" />
               <button onClick={joinRoom} disabled={busy}>Join</button>
@@ -111,7 +145,7 @@ export function ArenaLobby() {
         </div>
         {error && <p className="arena-error">{error}</p>}
         <div className="arena-rules">
-          <span>01 · Choose game</span><span>02 · Create</span><span>03 · Blind vote</span><span>04 · Winner teaches</span>
+          <span>01 · Configure match</span><span>02 · Create + vote</span><span>03 · Winner teaches</span><span>04 · Final standings</span>
         </div>
       </section>
     </main>
@@ -123,6 +157,9 @@ export function ArenaRoom({ code }: { code: string }) {
   const [state, setState] = useState<ArenaState | null>(null);
   const [entry, setEntry] = useState("");
   const [selectedMode, setSelectedMode] = useState<ModeChoice>(RANDOM_MODE);
+  const [matchLength, setMatchLength] = useState<MatchLength>(3);
+  const [matchFormat, setMatchFormat] = useState<MatchFormat>("SOLO");
+  const [rotationMode, setRotationMode] = useState<RotationMode>("AUTO");
   const [intent, setIntent] = useState("");
   const [move, setMove] = useState("");
   const [lesson, setLesson] = useState("");
@@ -130,6 +167,7 @@ export function ArenaRoom({ code }: { code: string }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const roundRef = useRef<number | null>(null);
+  const setupMatchRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/arena/room?code=${encodeURIComponent(code)}`, { cache: "no-store" });
@@ -142,6 +180,13 @@ export function ArenaRoom({ code }: { code: string }) {
       setIntent("");
       setMove("");
       setLesson("");
+    }
+    if (data.room.matchStatus === "setup" && setupMatchRef.current !== data.room.matchNumber) {
+      setupMatchRef.current = data.room.matchNumber;
+      setMatchLength(data.room.matchLength === 5 ? 5 : 3);
+      setMatchFormat(data.room.matchFormat);
+      setRotationMode(data.room.rotationMode);
+      setSelectedMode(RANDOM_MODE);
     }
     const mine = data.me ? data.winners.find((winner) => winner.playerId === data.me?.id) : null;
     if (mine?.teachback) {
@@ -187,6 +232,11 @@ export function ArenaRoom({ code }: { code: string }) {
     );
   }
 
+  const firstRound = state.room.roundNumber === 0 && state.room.matchStatus === "setup";
+  const startPayload = firstRound
+    ? { mode: selectedMode, matchLength, matchFormat, rotationMode }
+    : { mode: selectedMode };
+
   return (
     <main className="arena-shell">
       <header className="arena-topbar">
@@ -196,10 +246,13 @@ export function ArenaRoom({ code }: { code: string }) {
 
       <section className="arena-room-grid">
         <aside className="arena-scoreboard">
+          <MatchStatus state={state} />
           <div className="arena-side-title"><Users size={17} /><span>{state.counts.players}/{state.room.maxPlayers} creators</span></div>
           {sortedScores.map((player, index) => (
-            <div className="arena-player" key={player.id}>
-              <span>{index + 1}</span><strong>{player.displayName}</strong><b>{player.score}</b>
+            <div className="arena-player arena-player-match" key={player.id}>
+              <span>{index + 1}</span>
+              <div><strong>{player.displayName}</strong>{state.room.matchFormat === "TEAMS" && player.team && <small className={`arena-team-mini arena-team-${player.team.toLowerCase()}`}>{teamLabel(player.team)}</small>}</div>
+              <b>{player.score}</b>
             </div>
           ))}
           <button className="arena-exit" onClick={() => router.push("/arena")}>Leave screen</button>
@@ -208,21 +261,30 @@ export function ArenaRoom({ code }: { code: string }) {
         <section className="arena-stage-live">
           {state.room.phase === "lobby" && (
             <div className="arena-phase-card">
-              <p className="eyebrow"><Radio size={15} /> ROOM OPEN</p>
-              <h1>Pick the kind of trouble.</h1>
-              <p>Share <strong>{code}</strong>. The host chooses a game and starts when at least two creators are here.</p>
+              <p className="eyebrow"><Radio size={15} /> MATCH {state.room.matchNumber} SETUP</p>
+              <h1>Set the rules. Then make trouble.</h1>
+              <p>Share <strong>{code}</strong>. The room stays together for the whole match and the scoreboard resets only on rematch.</p>
               {state.room.isHost ? (
                 <>
-                  <ModePicker value={selectedMode} onChange={setSelectedMode} />
-                  <button className="button button-primary arena-start-button" onClick={() => act("start", { mode: selectedMode })} disabled={busy || state.counts.players < 2}>Start round one <ArrowRight size={18} /></button>
+                  <MatchSetup
+                    length={matchLength}
+                    format={matchFormat}
+                    rotation={rotationMode}
+                    onLength={setMatchLength}
+                    onFormat={setMatchFormat}
+                    onRotation={setRotationMode}
+                  />
+                  {rotationMode === "HOST" && <ModePicker value={selectedMode} onChange={setSelectedMode} />}
+                  <button className="button button-primary arena-start-button" onClick={() => act("start", startPayload)} disabled={busy || state.counts.players < 2}>Start {matchLength}-round match <ArrowRight size={18} /></button>
                 </>
-              ) : <div className="arena-waiting">Host is choosing the first game…</div>}
+              ) : <div className="arena-waiting">Host is configuring match {state.room.matchNumber}…</div>}
             </div>
           )}
 
           {state.room.phase === "answering" && state.round && (
             <div className="arena-phase-card">
-              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>{mode?.name ?? state.round.mode}</span></div>
+              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber} / {state.room.matchLength}</span><span>{mode?.name ?? state.round.mode}</span></div>
+              <RoundTrack state={state} />
               {mode && <ModeBrief mode={mode} />}
               <h1>{state.round.prompt}</h1>
               <textarea value={entry} onChange={(event) => setEntry(event.target.value.slice(0, mode?.maxChars ?? 280))} maxLength={mode?.maxChars ?? 280} placeholder={mode?.placeholder ?? "Make your move…"} />
@@ -236,10 +298,11 @@ export function ArenaRoom({ code }: { code: string }) {
 
           {state.room.phase === "voting" && state.round && (
             <div className="arena-phase-card">
-              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>BLIND {mode?.shortName.toUpperCase() ?? "VOTE"}</span></div>
+              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber} / {state.room.matchLength}</span><span>BLIND {mode?.shortName.toUpperCase() ?? "VOTE"}</span></div>
+              <RoundTrack state={state} />
               {mode && <ModeBrief mode={mode} compact />}
               <h1>{state.round.prompt}</h1>
-              <p className="arena-vote-help">Creators stay hidden until the reveal. Judge the move using the game&apos;s three lenses—not who you think wrote it.</p>
+              <p className="arena-vote-help">Creators—and team identities—stay hidden until the reveal. Judge the move using the game&apos;s three lenses.</p>
               <div className="arena-submissions">
                 {state.submissions.map((submission, index) => (
                   <button key={submission.id} className={`arena-submission ${state.myVoteId === submission.id ? "arena-submission-voted" : ""} ${submission.isMine ? "arena-submission-mine" : ""}`} onClick={() => !submission.isMine && act("vote", { submissionId: submission.id })} disabled={busy || submission.isMine}>
@@ -255,12 +318,16 @@ export function ArenaRoom({ code }: { code: string }) {
 
           {state.room.phase === "results" && state.round && (
             <div className="arena-phase-card arena-results-card">
-              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>{mode?.name ?? "RESULT"}</span></div>
+              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber} / {state.room.matchLength}</span><span>{mode?.name ?? "RESULT"}</span></div>
+              <RoundTrack state={state} />
               <p className="eyebrow"><Crown size={16} /> WINNING MOVE</p>
               {state.winners.map((winner) => (
                 <article className="arena-winner" key={winner.submissionId}>
                   <blockquote>“{winner.content}”</blockquote>
-                  <div><strong>{winner.author}</strong><span>{winner.voteCount} vote{winner.voteCount === 1 ? "" : "s"}</span></div>
+                  <div>
+                    <strong>{winner.author}</strong>
+                    <span>{state.room.matchFormat === "TEAMS" && winner.team ? `${teamLabel(winner.team)} · ` : ""}{winner.voteCount} vote{winner.voteCount === 1 ? "" : "s"}</span>
+                  </div>
                   {winner.profileHandle && <Link href={`/@${winner.profileHandle}`}>Examine the winner&apos;s creator profile <ArrowRight size={16} /></Link>}
                   {winner.teachback ? (
                     <WinnerBreakdown teachback={winner.teachback} author={winner.author} />
@@ -275,7 +342,7 @@ export function ArenaRoom({ code }: { code: string }) {
                   <div>
                     <p className="eyebrow">YOUR FLOOR</p>
                     <h2>School the room.</h2>
-                    <p>You won the blind vote. Now expose the decisions behind it so everyone gets a reusable principle—not just your answer.</p>
+                    <p>You won the blind vote. Expose the decisions behind it so the other creators—or the other team—leave with a technique they can use.</p>
                   </div>
                   <label>
                     <span>What were you aiming for?</span>
@@ -300,13 +367,18 @@ export function ArenaRoom({ code }: { code: string }) {
                 </div>
               )}
 
-              {state.room.isHost ? (
+              {state.room.matchFinished ? (
+                <MatchFinal state={state} busy={busy} onRematch={() => act("rematch")} />
+              ) : state.room.isHost ? (
                 <section className="arena-next-round">
-                  <div><span>NEXT GAME</span><small>{state.counts.teachbacks > 0 ? "Winner lesson captured." : "You can continue now, or give the winner the floor first."}</small></div>
-                  <ModePicker value={selectedMode} onChange={setSelectedMode} compact />
-                  <button className="button button-primary" onClick={() => act("start", { mode: selectedMode })} disabled={busy}>Start next round <ArrowRight size={18} /></button>
+                  <div>
+                    <span>NEXT ROUND · {state.room.roundNumber + 1}/{state.room.matchLength}</span>
+                    <small>{state.room.rotationMode === "AUTO" ? "FACEBACK will rotate to the next game automatically." : state.counts.teachbacks > 0 ? "Winner lesson captured. Pick the next game." : "Pick now, or give the winner the floor first."}</small>
+                  </div>
+                  {state.room.rotationMode === "HOST" && <ModePicker value={selectedMode} onChange={setSelectedMode} compact />}
+                  <button className="button button-primary" onClick={() => act("start", { mode: selectedMode })} disabled={busy}>Start round {state.room.roundNumber + 1} <ArrowRight size={18} /></button>
                 </section>
-              ) : <div className="arena-waiting">Waiting for the host to choose the next game…</div>}
+              ) : <div className="arena-waiting">Waiting for the host to start round {state.room.roundNumber + 1}…</div>}
             </div>
           )}
           {error && <p className="arena-error">{error}</p>}
@@ -317,6 +389,79 @@ export function ArenaRoom({ code }: { code: string }) {
 }
 
 type ModeMeta = (typeof GAME_MODES)[number];
+
+function MatchSetup({
+  length,
+  format,
+  rotation,
+  onLength,
+  onFormat,
+  onRotation,
+}: {
+  length: MatchLength;
+  format: MatchFormat;
+  rotation: RotationMode;
+  onLength: (value: MatchLength) => void;
+  onFormat: (value: MatchFormat) => void;
+  onRotation: (value: RotationMode) => void;
+}) {
+  return (
+    <section className="arena-match-setup">
+      <div className="arena-setup-group">
+        <span>MATCH LENGTH</span>
+        <div className="arena-setup-buttons">
+          {MATCH_LENGTHS.map((value) => <button key={value} className={length === value ? "arena-setup-selected" : ""} onClick={() => onLength(value)} type="button"><strong>{value} rounds</strong><small>{value === 3 ? "Fast set" : "Full set"}</small></button>)}
+        </div>
+      </div>
+      <div className="arena-setup-group">
+        <span>FORMAT</span>
+        <div className="arena-setup-buttons">
+          {MATCH_FORMATS.map((value) => <button key={value.id} className={format === value.id ? "arena-setup-selected" : ""} onClick={() => onFormat(value.id)} type="button"><strong>{value.name}</strong><small>{value.description}</small></button>)}
+        </div>
+      </div>
+      <div className="arena-setup-group">
+        <span>GAME ROTATION</span>
+        <div className="arena-setup-buttons">
+          {ROTATION_MODES.map((value) => <button key={value.id} className={rotation === value.id ? "arena-setup-selected" : ""} onClick={() => onRotation(value.id)} type="button"><strong>{value.name}</strong><small>{value.description}</small></button>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MatchStatus({ state }: { state: ArenaState }) {
+  return (
+    <section className="arena-match-status">
+      <div><span>MATCH</span><strong>{state.room.matchNumber}</strong></div>
+      <div><span>ROUND</span><strong>{state.room.roundNumber}/{state.room.matchLength}</strong></div>
+      <div><span>FORMAT</span><strong>{state.room.matchFormat === "TEAMS" ? "TEAMS" : "SOLO"}</strong></div>
+      {state.room.matchFormat === "TEAMS" && (
+        <div className="arena-team-score-mini">
+          <b className="arena-team-signal">SIG {state.room.teamScores.signal}</b>
+          <b className="arena-team-static">STA {state.room.teamScores.static}</b>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RoundTrack({ state }: { state: ArenaState }) {
+  return (
+    <div className="arena-round-track" aria-label="Match round history">
+      {Array.from({ length: state.room.matchLength }, (_, index) => {
+        const roundNumber = index + 1;
+        const history = state.roundHistory.find((entry) => entry.roundNumber === roundNumber);
+        const active = state.room.roundNumber === roundNumber && !history;
+        return (
+          <div className={`${history ? "arena-round-done" : ""} ${active ? "arena-round-active" : ""}`} key={roundNumber}>
+            <span>{roundNumber}</span>
+            <small>{history ? getGameMode(history.mode)?.shortName ?? history.mode : active ? getGameMode(state.round?.mode ?? "")?.shortName ?? "LIVE" : "—"}</small>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ModePicker({ value, onChange, compact = false }: { value: ModeChoice; onChange: (mode: ModeChoice) => void; compact?: boolean }) {
   return (
@@ -352,6 +497,37 @@ function WinnerBreakdown({ teachback, author }: { teachback: Teachback; author: 
         <article><span>02 · MOVE</span><strong>What I did</strong><p>{teachback.move}</p></article>
         <article><span>03 · STEAL THIS</span><strong>The reusable principle</strong><p>{teachback.lesson}</p></article>
       </div>
+    </section>
+  );
+}
+
+function MatchFinal({ state, busy, onRematch }: { state: ArenaState; busy: boolean; onRematch: () => void }) {
+  const topScore = Math.max(...state.players.map((player) => player.score), 0);
+  const champions = state.players.filter((player) => player.score === topScore && topScore > 0);
+  const signal = state.room.teamScores.signal;
+  const statik = state.room.teamScores.static;
+  const teamWinner = signal === statik ? "DRAW" : signal > statik ? TEAM_SIGNAL : TEAM_STATIC;
+
+  return (
+    <section className="arena-match-final">
+      <div className="arena-final-heading"><Trophy size={24} /><div><span>MATCH {state.room.matchNumber} COMPLETE</span><h2>Final standings.</h2></div></div>
+      {state.room.matchFormat === "TEAMS" && (
+        <div className="arena-team-final">
+          <article className={teamWinner === TEAM_SIGNAL ? "arena-team-champion" : ""}><span>TEAM SIGNAL</span><strong>{signal}</strong>{teamWinner === TEAM_SIGNAL && <small>TEAM CHAMPION</small>}</article>
+          <b>VS</b>
+          <article className={teamWinner === TEAM_STATIC ? "arena-team-champion" : ""}><span>TEAM STATIC</span><strong>{statik}</strong>{teamWinner === TEAM_STATIC && <small>TEAM CHAMPION</small>}</article>
+          {teamWinner === "DRAW" && <p>Team draw. The individual ladder breaks the emotional tie.</p>}
+        </div>
+      )}
+      <div className="arena-final-ladder">
+        {state.players.map((player, index) => (
+          <article key={player.id} className={player.score === topScore && topScore > 0 ? "arena-final-champion" : ""}>
+            <span>{index + 1}</span><div><strong>{player.displayName}</strong>{state.room.matchFormat === "TEAMS" && player.team && <small>{teamLabel(player.team)}</small>}</div><b>{player.score} win{player.score === 1 ? "" : "s"}</b>
+          </article>
+        ))}
+      </div>
+      {champions.length > 0 && <p className="arena-champion-line"><Crown size={17} /> {champions.map((player) => player.displayName).join(" + ")} {champions.length === 1 ? "takes" : "share"} the individual match crown.</p>}
+      {state.room.isHost ? <button className="button button-primary arena-rematch-button" onClick={onRematch} disabled={busy}>Rematch in this room <RotateCcw size={18} /></button> : <div className="arena-waiting">Match complete. Waiting for the host to call the rematch…</div>}
     </section>
   );
 }
