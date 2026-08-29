@@ -4,6 +4,7 @@ import "./arena.css";
 import "./arena-modes.css";
 import "./arena-match.css";
 import "./arena-public.css";
+import "./watch.css";
 
 export const metadata: Metadata = {
   title: {
