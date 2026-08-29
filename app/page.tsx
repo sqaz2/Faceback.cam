@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Layers3, Link2, Radio, ScanLine, Sparkles } from "lucide-react";
+import { ArrowRight, Eye, Layers3, Link2, Radio, ScanLine, Sparkles } from "lucide-react";
 import { featuredWork, movementQuestions } from "./content";
 
 export default function Home() {
@@ -11,6 +11,7 @@ export default function Home() {
         </Link>
         <nav className="desktop-nav" aria-label="Main navigation">
           <Link href="/arena">Arena</Link>
+          <Link href="/watch">Watch</Link>
           <a href="#work">Work</a>
           <a href="#questions">Questions</a>
           <a href="#stories">Stories</a>
@@ -109,9 +110,14 @@ export default function Home() {
             work before seeing the creator, and the winner breaks down the move
             so everyone leaves with something reusable.
           </p>
-          <Link className="button button-dark" href="/arena">
-            Create or join a room <ArrowRight size={18} />
-          </Link>
+          <div className="arena-home-actions">
+            <Link className="button button-dark" href="/arena">
+              Create or join a room <ArrowRight size={18} />
+            </Link>
+            <Link className="arena-watch-link" href="/watch">
+              <Eye size={17} /> Watch a live room
+            </Link>
+          </div>
         </div>
         <div className="arena-home-flow" aria-label="Arena round flow">
           <span>01 CHOOSE GAME</span>
