@@ -1,4 +1,5 @@
 import { cleanText, db, getOwnedProfile, requireApiUser } from "../../_shared";
+import { deadlineAfter, reconcileArenaRoom, revealArenaRound } from "../_live";
 import {
   GAME_MODES,
   RANDOM_MODE,
@@ -9,13 +10,16 @@ import {
 import {
   TEAM_SIGNAL,
   TEAM_STATIC,
+  getTimerPreset,
   isMatchFormat,
   isMatchLength,
   isRotationMode,
+  isTimerPreset,
   type MatchFormat,
   type MatchLength,
   type RotationMode,
   type TeamId,
+  type TimerPreset,
 } from "../../../arena/match-config";
 
 type RoomRow = {
@@ -32,6 +36,9 @@ type RoomRow = {
   matchNumber: number;
   signalScore: number;
   staticScore: number;
+  timerPreset: TimerPreset;
+  answerSeconds: number;
+  voteSeconds: number;
 };
 
 type PlayerRow = {
@@ -50,6 +57,8 @@ type RoundRow = {
   mode: string;
   status: string;
   winningTeam: string;
+  answerDeadlineAt: string | null;
+  voteDeadlineAt: string | null;
 };
 
 type SubmissionRow = {
@@ -133,6 +142,9 @@ export async function GET(request: Request) {
   try {
     const code = normalizeCode(new URL(request.url).searchParams.get("code"));
     if (!code) return Response.json({ error: "Room code required" }, { status: 400 });
+    const room = await getRoom(code);
+    if (!room) return Response.json({ error: "Room not found" }, { status: 404 });
+    await reconcileArenaRoom(room.id);
     return Response.json(await roomState(code, user.email));
   } catch (error) {
     return jsonError(error);
@@ -168,7 +180,7 @@ export async function POST(request: Request) {
 
     const code = normalizeCode(payload.code);
     if (!code) return Response.json({ error: "Room code required" }, { status: 400 });
-    const room = await getRoom(code);
+    let room = await getRoom(code);
     if (!room) return Response.json({ error: "Room not found" }, { status: 404 });
 
     if (action === "join") {
@@ -184,6 +196,9 @@ export async function POST(request: Request) {
       await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "", team);
       return Response.json({ code });
     }
+
+    await reconcileArenaRoom(room.id);
+    room = (await getRoom(code)) ?? room;
 
     const me = await getPlayer(room.id, user.email);
     if (!me) return Response.json({ error: "Join the room first." }, { status: 403 });
@@ -233,11 +248,15 @@ export async function POST(request: Request) {
       let matchLength = room.matchLength as MatchLength;
       let matchFormat = room.matchFormat;
       let rotationMode = room.rotationMode;
+      let timerPreset = room.timerPreset;
+      let answerSeconds = room.answerSeconds;
+      let voteSeconds = room.voteSeconds;
 
       if (room.roundNumber === 0 && room.matchStatus === "setup") {
         const requestedLength = Number(payload.matchLength);
         const requestedFormat = cleanText(payload.matchFormat, 12).toUpperCase();
         const requestedRotation = cleanText(payload.rotationMode, 12).toUpperCase();
+        const requestedTimer = cleanText(payload.timerPreset, 12).toUpperCase();
         if (!isMatchLength(requestedLength)) {
           return Response.json({ error: "Choose a 3- or 5-round match." }, { status: 400 });
         }
@@ -247,18 +266,26 @@ export async function POST(request: Request) {
         if (!isRotationMode(requestedRotation)) {
           return Response.json({ error: "Choose automatic or host-picked game rotation." }, { status: 400 });
         }
+        if (!isTimerPreset(requestedTimer)) {
+          return Response.json({ error: "Choose a valid round timer." }, { status: 400 });
+        }
+        const timer = getTimerPreset(requestedTimer);
         matchLength = requestedLength;
         matchFormat = requestedFormat;
         rotationMode = requestedRotation;
+        timerPreset = requestedTimer;
+        answerSeconds = timer.answerSeconds;
+        voteSeconds = timer.voteSeconds;
         await db()
           .prepare(
             `UPDATE arena_rooms
              SET match_length = ?, match_format = ?, rotation_mode = ?,
+               timer_preset = ?, answer_seconds = ?, vote_seconds = ?,
                match_status = 'active', signal_score = 0, static_score = 0,
                updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
           )
-          .bind(matchLength, matchFormat, rotationMode, room.id)
+          .bind(matchLength, matchFormat, rotationMode, timerPreset, answerSeconds, voteSeconds, room.id)
           .run();
         await db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id).run();
         if (matchFormat === "TEAMS") {
@@ -279,13 +306,15 @@ export async function POST(request: Request) {
         : resolveMode(requestedMode, room.id, room.matchNumber, roundNumber);
       if (!mode) return Response.json({ error: "Choose a valid game mode." }, { status: 400 });
       const prompt = choosePrompt(mode, room.id, room.matchNumber, roundNumber);
+      const answerDeadline = deadlineAfter(answerSeconds);
 
       await db()
         .prepare(
-          `INSERT INTO arena_rounds (room_id, match_number, round_number, prompt, mode)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO arena_rounds
+            (room_id, match_number, round_number, prompt, mode, answer_deadline_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
         )
-        .bind(room.id, room.matchNumber, roundNumber, prompt, mode)
+        .bind(room.id, room.matchNumber, roundNumber, prompt, mode, answerDeadline)
         .run();
       await db()
         .prepare(
@@ -296,7 +325,7 @@ export async function POST(request: Request) {
         )
         .bind(roundNumber, room.id)
         .run();
-      return Response.json({ ok: true, mode });
+      return Response.json({ ok: true, mode, answerDeadline });
     }
 
     const round = await getCurrentRound(room);
@@ -326,15 +355,20 @@ export async function POST(request: Request) {
       if (room.phase !== "answering") return Response.json({ error: "Voting cannot open yet." }, { status: 409 });
       const submissions = await submissionCount(round.id);
       if (submissions < 2) return Response.json({ error: "Need at least two entries before voting." }, { status: 409 });
+      const voteDeadline = deadlineAfter(room.voteSeconds);
       await db()
-        .prepare("UPDATE arena_rounds SET status = 'voting', voting_opened_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(round.id)
+        .prepare(
+          `UPDATE arena_rounds
+           SET status = 'voting', voting_opened_at = CURRENT_TIMESTAMP, vote_deadline_at = ?
+           WHERE id = ? AND status = 'answering'`,
+        )
+        .bind(voteDeadline, round.id)
         .run();
       await db()
         .prepare("UPDATE arena_rooms SET phase = 'voting', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
         .bind(room.id)
         .run();
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, voteDeadline });
     }
 
     if (action === "vote") {
@@ -362,39 +396,11 @@ export async function POST(request: Request) {
     if (action === "reveal") {
       requireHost(room, user.email);
       if (room.phase !== "voting") return Response.json({ error: "Results have already been revealed." }, { status: 409 });
-      const rows = await submissionRows(round.id);
-      const totalVotes = rows.reduce((sum, entry) => sum + Number(entry.voteCount || 0), 0);
-      if (totalVotes < 1) return Response.json({ error: "Wait for at least one vote." }, { status: 409 });
-      const winners = winnerPlayerIds(rows);
-      for (const playerId of winners) {
-        await db().prepare("UPDATE arena_players SET score = score + 1 WHERE id = ?").bind(playerId).run();
+      const result = await revealArenaRound(room.id, round.id);
+      if (!result.revealed && result.reason === "no-votes") {
+        return Response.json({ error: "Wait for at least one vote." }, { status: 409 });
       }
-
-      const winningTeams = room.matchFormat === "TEAMS" ? winnerTeams(rows, winners) : [];
-      const signalGain = winningTeams.includes(TEAM_SIGNAL) ? 1 : 0;
-      const staticGain = winningTeams.includes(TEAM_STATIC) ? 1 : 0;
-      const winningTeam = winningTeams.length === 1 ? winningTeams[0] : winningTeams.length > 1 ? "TIE" : "";
-      const isFinalRound = room.roundNumber >= room.matchLength;
-
-      await db()
-        .prepare(
-          `UPDATE arena_rounds
-           SET status = 'results', winning_team = ?, revealed_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-        )
-        .bind(winningTeam, round.id)
-        .run();
-      await db()
-        .prepare(
-          `UPDATE arena_rooms
-           SET phase = 'results', signal_score = signal_score + ?,
-             static_score = static_score + ?, match_status = ?,
-             updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-        )
-        .bind(signalGain, staticGain, isFinalRound ? "finished" : "active", room.id)
-        .run();
-      return Response.json({ ok: true, matchFinished: isFinalRound });
+      return Response.json({ ok: true, matchFinished: result.revealed ? result.matchFinished : room.matchStatus === "finished" });
     }
 
     if (action === "teachback") {
@@ -434,8 +440,11 @@ export async function POST(request: Request) {
 }
 
 async function roomState(code: string, email: string) {
-  const room = await getRoom(code);
+  let room = await getRoom(code);
   if (!room) throw new HttpError("Room not found", 404);
+  await reconcileArenaRoom(room.id);
+  room = (await getRoom(code)) ?? room;
+
   const me = await getPlayer(room.id, email);
   if (me) {
     await db().prepare("UPDATE arena_players SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?").bind(me.id).run();
@@ -517,6 +526,7 @@ async function roomState(code: string, email: string) {
   }
 
   return {
+    serverNow: new Date().toISOString(),
     room: {
       code: room.code,
       phase: room.phase,
@@ -529,6 +539,9 @@ async function roomState(code: string, email: string) {
       matchStatus: room.matchStatus,
       matchNumber: room.matchNumber,
       matchFinished: room.matchStatus === "finished",
+      timerPreset: room.timerPreset,
+      answerSeconds: room.answerSeconds,
+      voteSeconds: room.voteSeconds,
       teamScores: {
         signal: room.signalScore,
         static: room.staticScore,
@@ -544,6 +557,8 @@ async function roomState(code: string, email: string) {
           roundNumber: round.roundNumber,
           matchNumber: round.matchNumber,
           winningTeam: round.winningTeam,
+          answerDeadlineAt: round.answerDeadlineAt,
+          voteDeadlineAt: round.voteDeadlineAt,
         }
       : null,
     roundHistory: history,
@@ -570,7 +585,8 @@ async function getRoom(code: string) {
         match_length AS matchLength, match_format AS matchFormat,
         rotation_mode AS rotationMode, match_status AS matchStatus,
         match_number AS matchNumber, signal_score AS signalScore,
-        static_score AS staticScore
+        static_score AS staticScore, timer_preset AS timerPreset,
+        answer_seconds AS answerSeconds, vote_seconds AS voteSeconds
        FROM arena_rooms WHERE code = ? LIMIT 1`,
     )
     .bind(code)
@@ -603,7 +619,8 @@ async function getCurrentRound(room: RoomRow) {
   return db()
     .prepare(
       `SELECT id, round_number AS roundNumber, match_number AS matchNumber,
-        prompt, mode, status, winning_team AS winningTeam
+        prompt, mode, status, winning_team AS winningTeam,
+        answer_deadline_at AS answerDeadlineAt, vote_deadline_at AS voteDeadlineAt
        FROM arena_rounds
        WHERE room_id = ? AND match_number = ? AND round_number = ? LIMIT 1`,
     )
@@ -705,14 +722,6 @@ function winnerPlayerIds(rows: SubmissionRow[]) {
   if (rows.length === 0) return [];
   const top = Math.max(...rows.map((entry) => Number(entry.voteCount || 0)));
   return [...new Set(rows.filter((entry) => Number(entry.voteCount || 0) === top).map((entry) => entry.playerId))];
-}
-
-function winnerTeams(rows: SubmissionRow[], winnerIds: number[]): TeamId[] {
-  const teams = rows
-    .filter((entry) => winnerIds.includes(entry.playerId))
-    .map((entry) => entry.team)
-    .filter((team): team is TeamId => team === TEAM_SIGNAL || team === TEAM_STATIC);
-  return [...new Set(teams)];
 }
 
 function requireHost(room: RoomRow, email: string) {
