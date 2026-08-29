@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Layers3, Link2, ScanLine, Sparkles } from "lucide-react";
+import { ArrowRight, Layers3, Link2, Radio, ScanLine, Sparkles } from "lucide-react";
 import { featuredWork, movementQuestions } from "./content";
 
 export default function Home() {
@@ -10,6 +10,7 @@ export default function Home() {
           FACEBACK<span>.CAM</span>
         </Link>
         <nav className="desktop-nav" aria-label="Main navigation">
+          <Link href="/play">Play</Link>
           <a href="#work">Work</a>
           <a href="#questions">Questions</a>
           <a href="#stories">Stories</a>
@@ -34,11 +35,11 @@ export default function Home() {
             facing back at the anti-AI backlash.
           </p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="/join">
-              Become a founding creator <ArrowRight size={18} />
+            <Link className="button button-primary" href="/play">
+              Open Quickfire rooms <Radio size={18} />
             </Link>
-            <Link className="button button-quiet" href="/@callmedaddy">
-              Explore a creator page
+            <Link className="button button-quiet" href="/join">
+              Become a founding creator <ArrowRight size={18} />
             </Link>
           </div>
         </div>
