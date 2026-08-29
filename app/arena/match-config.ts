@@ -31,6 +31,32 @@ export const ROTATION_MODES = [
 
 export type RotationMode = (typeof ROTATION_MODES)[number]["id"];
 
+export const TIMER_PRESETS = [
+  {
+    id: "QUICK",
+    name: "Quick fire",
+    description: "45 seconds to create · 20 seconds to vote",
+    answerSeconds: 45,
+    voteSeconds: 20,
+  },
+  {
+    id: "STANDARD",
+    name: "Standard",
+    description: "75 seconds to create · 30 seconds to vote",
+    answerSeconds: 75,
+    voteSeconds: 30,
+  },
+  {
+    id: "CHILL",
+    name: "Give it room",
+    description: "120 seconds to create · 45 seconds to vote",
+    answerSeconds: 120,
+    voteSeconds: 45,
+  },
+] as const;
+
+export type TimerPreset = (typeof TIMER_PRESETS)[number]["id"];
+
 export const TEAM_SIGNAL = "SIGNAL" as const;
 export const TEAM_STATIC = "STATIC" as const;
 export type TeamId = typeof TEAM_SIGNAL | typeof TEAM_STATIC;
@@ -45,6 +71,14 @@ export function isMatchFormat(value: string): value is MatchFormat {
 
 export function isRotationMode(value: string): value is RotationMode {
   return ROTATION_MODES.some((mode) => mode.id === value);
+}
+
+export function isTimerPreset(value: string): value is TimerPreset {
+  return TIMER_PRESETS.some((preset) => preset.id === value);
+}
+
+export function getTimerPreset(value: string) {
+  return TIMER_PRESETS.find((preset) => preset.id === value) ?? TIMER_PRESETS[1];
 }
 
 export function teamLabel(team: string) {
