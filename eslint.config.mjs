@@ -23,6 +23,21 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    files: [
+      "app/arena/arena-client.tsx",
+      "app/arena/timer-ui.tsx",
+      "app/watch/watch-client.tsx",
+    ],
+    rules: {
+      // These components intentionally synchronize React state with external
+      // systems: the D1-backed room poll and wall-clock deadlines. The initial
+      // fetch/countdown reset belongs to that synchronization effect; the
+      // generic React rule treats it as derived local state and reports a
+      // false positive for this polling/timer pattern.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
