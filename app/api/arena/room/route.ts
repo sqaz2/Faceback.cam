@@ -6,6 +6,17 @@ import {
   isGameModeId,
   type GameModeId,
 } from "../../../arena/game-modes";
+import {
+  TEAM_SIGNAL,
+  TEAM_STATIC,
+  isMatchFormat,
+  isMatchLength,
+  isRotationMode,
+  type MatchFormat,
+  type MatchLength,
+  type RotationMode,
+  type TeamId,
+} from "../../../arena/match-config";
 
 type RoomRow = {
   id: number;
@@ -14,6 +25,13 @@ type RoomRow = {
   phase: "lobby" | "answering" | "voting" | "results";
   roundNumber: number;
   maxPlayers: number;
+  matchLength: number;
+  matchFormat: MatchFormat;
+  rotationMode: RotationMode;
+  matchStatus: "setup" | "active" | "finished";
+  matchNumber: number;
+  signalScore: number;
+  staticScore: number;
 };
 
 type PlayerRow = {
@@ -21,14 +39,17 @@ type PlayerRow = {
   displayName: string;
   profileHandle: string;
   score: number;
+  team: string;
 };
 
 type RoundRow = {
   id: number;
   roundNumber: number;
+  matchNumber: number;
   prompt: string;
   mode: string;
   status: string;
+  winningTeam: string;
 };
 
 type SubmissionRow = {
@@ -37,6 +58,7 @@ type SubmissionRow = {
   content: string;
   authorName: string;
   profileHandle: string;
+  team: string;
   voteCount: number;
 };
 
@@ -45,6 +67,12 @@ type TeachbackRow = {
   intent: string;
   move: string;
   lesson: string;
+};
+
+type RoundHistoryRow = {
+  roundNumber: number;
+  mode: string;
+  winningTeam: string;
 };
 
 const PROMPTS: Record<GameModeId, string[]> = {
@@ -132,7 +160,7 @@ export async function POST(request: Request) {
           .run();
         const room = await getRoom(code);
         if (!room) throw new Error("Unable to create room");
-        await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "");
+        await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "", "");
         return Response.json({ code });
       }
       throw new Error("Unable to allocate a room code");
@@ -152,7 +180,8 @@ export async function POST(request: Request) {
       const count = await playerCount(room.id);
       if (count >= room.maxPlayers) return Response.json({ error: "That room is full." }, { status: 409 });
       const profile = await getOwnedProfile(user.email);
-      await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "");
+      const team = room.matchFormat === "TEAMS" ? await smallerTeam(room.id) : "";
+      await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "", team);
       return Response.json({ code });
     }
 
@@ -164,32 +193,105 @@ export async function POST(request: Request) {
       .bind(me.id)
       .run();
 
+    if (action === "rematch") {
+      requireHost(room, user.email);
+      if (room.matchStatus !== "finished" || room.phase !== "results") {
+        return Response.json({ error: "Finish the current match before starting a rematch." }, { status: 409 });
+      }
+      const nextMatch = room.matchNumber + 1;
+      await db()
+        .prepare(
+          `UPDATE arena_rooms
+           SET phase = 'lobby', round_number = 0, match_status = 'setup',
+             match_number = ?, signal_score = 0, static_score = 0,
+             updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(nextMatch, room.id)
+        .run();
+      await db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id).run();
+      if (room.matchFormat === "TEAMS") {
+        await rebalanceTeams(room.id, nextMatch);
+      } else {
+        await db().prepare("UPDATE arena_players SET team = '' WHERE room_id = ?").bind(room.id).run();
+      }
+      return Response.json({ ok: true, matchNumber: nextMatch });
+    }
+
     if (action === "start") {
       requireHost(room, user.email);
       if (room.phase !== "lobby" && room.phase !== "results") {
         return Response.json({ error: "Finish the current round first." }, { status: 409 });
       }
+      if (room.matchStatus === "finished") {
+        return Response.json({ error: "That match is complete. Start a rematch first." }, { status: 409 });
+      }
       if ((await playerCount(room.id)) < 2) {
         return Response.json({ error: "At least two creators are needed." }, { status: 409 });
       }
 
+      let matchLength = room.matchLength as MatchLength;
+      let matchFormat = room.matchFormat;
+      let rotationMode = room.rotationMode;
+
+      if (room.roundNumber === 0 && room.matchStatus === "setup") {
+        const requestedLength = Number(payload.matchLength);
+        const requestedFormat = cleanText(payload.matchFormat, 12).toUpperCase();
+        const requestedRotation = cleanText(payload.rotationMode, 12).toUpperCase();
+        if (!isMatchLength(requestedLength)) {
+          return Response.json({ error: "Choose a 3- or 5-round match." }, { status: 400 });
+        }
+        if (!isMatchFormat(requestedFormat)) {
+          return Response.json({ error: "Choose solo or team format." }, { status: 400 });
+        }
+        if (!isRotationMode(requestedRotation)) {
+          return Response.json({ error: "Choose automatic or host-picked game rotation." }, { status: 400 });
+        }
+        matchLength = requestedLength;
+        matchFormat = requestedFormat;
+        rotationMode = requestedRotation;
+        await db()
+          .prepare(
+            `UPDATE arena_rooms
+             SET match_length = ?, match_format = ?, rotation_mode = ?,
+               match_status = 'active', signal_score = 0, static_score = 0,
+               updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+          )
+          .bind(matchLength, matchFormat, rotationMode, room.id)
+          .run();
+        await db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id).run();
+        if (matchFormat === "TEAMS") {
+          await rebalanceTeams(room.id, room.matchNumber);
+        } else {
+          await db().prepare("UPDATE arena_players SET team = '' WHERE room_id = ?").bind(room.id).run();
+        }
+      }
+
       const roundNumber = room.roundNumber + 1;
+      if (roundNumber > matchLength) {
+        return Response.json({ error: "That match already reached its final round." }, { status: 409 });
+      }
+
       const requestedMode = cleanText(payload.mode, 20).toUpperCase() || RANDOM_MODE;
-      const mode = resolveMode(requestedMode, room.id, roundNumber);
+      const mode = rotationMode === "AUTO"
+        ? automaticMode(room.id, room.matchNumber, roundNumber)
+        : resolveMode(requestedMode, room.id, room.matchNumber, roundNumber);
       if (!mode) return Response.json({ error: "Choose a valid game mode." }, { status: 400 });
-      const prompt = choosePrompt(mode, room.id, roundNumber);
+      const prompt = choosePrompt(mode, room.id, room.matchNumber, roundNumber);
 
       await db()
         .prepare(
-          `INSERT INTO arena_rounds (room_id, round_number, prompt, mode)
-           VALUES (?, ?, ?, ?)`,
+          `INSERT INTO arena_rounds (room_id, match_number, round_number, prompt, mode)
+           VALUES (?, ?, ?, ?, ?)`,
         )
-        .bind(room.id, roundNumber, prompt, mode)
+        .bind(room.id, room.matchNumber, roundNumber, prompt, mode)
         .run();
       await db()
         .prepare(
           `UPDATE arena_rooms
-           SET phase = 'answering', round_number = ?, updated_at = CURRENT_TIMESTAMP
+           SET phase = 'answering', round_number = ?, match_status = 'active',
+             updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
         )
         .bind(roundNumber, room.id)
@@ -267,15 +369,32 @@ export async function POST(request: Request) {
       for (const playerId of winners) {
         await db().prepare("UPDATE arena_players SET score = score + 1 WHERE id = ?").bind(playerId).run();
       }
+
+      const winningTeams = room.matchFormat === "TEAMS" ? winnerTeams(rows, winners) : [];
+      const signalGain = winningTeams.includes(TEAM_SIGNAL) ? 1 : 0;
+      const staticGain = winningTeams.includes(TEAM_STATIC) ? 1 : 0;
+      const winningTeam = winningTeams.length === 1 ? winningTeams[0] : winningTeams.length > 1 ? "TIE" : "";
+      const isFinalRound = room.roundNumber >= room.matchLength;
+
       await db()
-        .prepare("UPDATE arena_rounds SET status = 'results', revealed_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(round.id)
+        .prepare(
+          `UPDATE arena_rounds
+           SET status = 'results', winning_team = ?, revealed_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(winningTeam, round.id)
         .run();
       await db()
-        .prepare("UPDATE arena_rooms SET phase = 'results', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(room.id)
+        .prepare(
+          `UPDATE arena_rooms
+           SET phase = 'results', signal_score = signal_score + ?,
+             static_score = static_score + ?, match_status = ?,
+             updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(signalGain, staticGain, isFinalRound ? "finished" : "active", room.id)
         .run();
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, matchFinished: isFinalRound });
     }
 
     if (action === "teachback") {
@@ -324,13 +443,15 @@ async function roomState(code: string, email: string) {
 
   const playersResult = await db()
     .prepare(
-      `SELECT id, display_name AS displayName, profile_handle AS profileHandle, score
+      `SELECT id, display_name AS displayName, profile_handle AS profileHandle,
+        score, team
        FROM arena_players WHERE room_id = ? ORDER BY score DESC, joined_at ASC`,
     )
     .bind(room.id)
     .all<PlayerRow>();
   const players = playersResult.results;
   const round = await getCurrentRound(room);
+  const history = await roundHistory(room.id, room.matchNumber);
 
   let submissions: Array<Record<string, unknown>> = [];
   let mySubmissionId: number | null = null;
@@ -363,6 +484,7 @@ async function roomState(code: string, email: string) {
               voteCount: Number(entry.voteCount || 0),
               author: entry.authorName,
               profileHandle: entry.profileHandle,
+              team: entry.team,
             }
           : {}),
       }));
@@ -384,6 +506,7 @@ async function roomState(code: string, email: string) {
             content: entry.content,
             author: entry.authorName,
             profileHandle: entry.profileHandle,
+            team: entry.team,
             voteCount: Number(entry.voteCount || 0),
             teachback: teachback
               ? { intent: teachback.intent, move: teachback.move, lesson: teachback.lesson }
@@ -400,10 +523,30 @@ async function roomState(code: string, email: string) {
       roundNumber: room.roundNumber,
       maxPlayers: room.maxPlayers,
       isHost: room.hostEmail === email,
+      matchLength: room.matchLength,
+      matchFormat: room.matchFormat,
+      rotationMode: room.rotationMode,
+      matchStatus: room.matchStatus,
+      matchNumber: room.matchNumber,
+      matchFinished: room.matchStatus === "finished",
+      teamScores: {
+        signal: room.signalScore,
+        static: room.staticScore,
+      },
     },
-    me: me ? { id: me.id } : null,
+    me: me ? { id: me.id, team: me.team } : null,
     players,
-    round: round ? { id: round.id, prompt: round.prompt, mode: round.mode, roundNumber: round.roundNumber } : null,
+    round: round
+      ? {
+          id: round.id,
+          prompt: round.prompt,
+          mode: round.mode,
+          roundNumber: round.roundNumber,
+          matchNumber: round.matchNumber,
+          winningTeam: round.winningTeam,
+        }
+      : null,
+    roundHistory: history,
     submissions,
     mySubmissionId,
     mySubmission,
@@ -422,8 +565,12 @@ async function roomState(code: string, email: string) {
 async function getRoom(code: string) {
   return db()
     .prepare(
-      `SELECT id, code, host_email AS hostEmail, phase, round_number AS roundNumber,
-        max_players AS maxPlayers
+      `SELECT id, code, host_email AS hostEmail, phase,
+        round_number AS roundNumber, max_players AS maxPlayers,
+        match_length AS matchLength, match_format AS matchFormat,
+        rotation_mode AS rotationMode, match_status AS matchStatus,
+        match_number AS matchNumber, signal_score AS signalScore,
+        static_score AS staticScore
        FROM arena_rooms WHERE code = ? LIMIT 1`,
     )
     .bind(code)
@@ -433,20 +580,21 @@ async function getRoom(code: string) {
 async function getPlayer(roomId: number, email: string) {
   return db()
     .prepare(
-      `SELECT id, display_name AS displayName, profile_handle AS profileHandle, score
+      `SELECT id, display_name AS displayName, profile_handle AS profileHandle,
+        score, team
        FROM arena_players WHERE room_id = ? AND user_email = ? LIMIT 1`,
     )
     .bind(roomId, email)
     .first<PlayerRow>();
 }
 
-async function addPlayer(roomId: number, email: string, displayName: string, handle: string) {
+async function addPlayer(roomId: number, email: string, displayName: string, handle: string, team: string) {
   await db()
     .prepare(
-      `INSERT INTO arena_players (room_id, user_email, display_name, profile_handle)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO arena_players (room_id, user_email, display_name, profile_handle, team)
+       VALUES (?, ?, ?, ?, ?)`,
     )
-    .bind(roomId, email, displayName.slice(0, 70), handle.slice(0, 30))
+    .bind(roomId, email, displayName.slice(0, 70), handle.slice(0, 30), team)
     .run();
 }
 
@@ -454,10 +602,12 @@ async function getCurrentRound(room: RoomRow) {
   if (room.roundNumber < 1) return null;
   return db()
     .prepare(
-      `SELECT id, round_number AS roundNumber, prompt, mode, status
-       FROM arena_rounds WHERE room_id = ? AND round_number = ? LIMIT 1`,
+      `SELECT id, round_number AS roundNumber, match_number AS matchNumber,
+        prompt, mode, status, winning_team AS winningTeam
+       FROM arena_rounds
+       WHERE room_id = ? AND match_number = ? AND round_number = ? LIMIT 1`,
     )
-    .bind(room.id, room.roundNumber)
+    .bind(room.id, room.matchNumber, room.roundNumber)
     .first<RoundRow>();
 }
 
@@ -466,12 +616,12 @@ async function submissionRows(roundId: number) {
     .prepare(
       `SELECT s.id, s.player_id AS playerId, s.content,
         p.display_name AS authorName, p.profile_handle AS profileHandle,
-        COUNT(v.id) AS voteCount
+        p.team AS team, COUNT(v.id) AS voteCount
        FROM arena_submissions s
        JOIN arena_players p ON p.id = s.player_id
        LEFT JOIN arena_votes v ON v.submission_id = s.id
        WHERE s.round_id = ?
-       GROUP BY s.id, s.player_id, s.content, p.display_name, p.profile_handle
+       GROUP BY s.id, s.player_id, s.content, p.display_name, p.profile_handle, p.team
        ORDER BY s.id ASC`,
     )
     .bind(roundId)
@@ -487,6 +637,19 @@ async function teachbackRows(roundId: number) {
     )
     .bind(roundId)
     .all<TeachbackRow>();
+  return result.results;
+}
+
+async function roundHistory(roomId: number, matchNumber: number) {
+  const result = await db()
+    .prepare(
+      `SELECT round_number AS roundNumber, mode, winning_team AS winningTeam
+       FROM arena_rounds
+       WHERE room_id = ? AND match_number = ? AND status = 'results'
+       ORDER BY round_number ASC`,
+    )
+    .bind(roomId, matchNumber)
+    .all<RoundHistoryRow>();
   return result.results;
 }
 
@@ -514,10 +677,42 @@ async function voteCount(roundId: number) {
   return Number(row?.count || 0);
 }
 
+async function smallerTeam(roomId: number): Promise<TeamId> {
+  const rows = await db()
+    .prepare(
+      `SELECT team, COUNT(*) AS count FROM arena_players
+       WHERE room_id = ? AND team IN (?, ?) GROUP BY team`,
+    )
+    .bind(roomId, TEAM_SIGNAL, TEAM_STATIC)
+    .all<{ team: string; count: number }>();
+  const signal = Number(rows.results.find((row) => row.team === TEAM_SIGNAL)?.count || 0);
+  const statik = Number(rows.results.find((row) => row.team === TEAM_STATIC)?.count || 0);
+  return signal <= statik ? TEAM_SIGNAL : TEAM_STATIC;
+}
+
+async function rebalanceTeams(roomId: number, matchNumber: number) {
+  const players = await db()
+    .prepare("SELECT id FROM arena_players WHERE room_id = ? ORDER BY joined_at ASC, id ASC")
+    .bind(roomId)
+    .all<{ id: number }>();
+  for (let index = 0; index < players.results.length; index += 1) {
+    const team = (index + matchNumber - 1) % 2 === 0 ? TEAM_SIGNAL : TEAM_STATIC;
+    await db().prepare("UPDATE arena_players SET team = ? WHERE id = ?").bind(team, players.results[index].id).run();
+  }
+}
+
 function winnerPlayerIds(rows: SubmissionRow[]) {
   if (rows.length === 0) return [];
   const top = Math.max(...rows.map((entry) => Number(entry.voteCount || 0)));
   return [...new Set(rows.filter((entry) => Number(entry.voteCount || 0) === top).map((entry) => entry.playerId))];
+}
+
+function winnerTeams(rows: SubmissionRow[], winnerIds: number[]): TeamId[] {
+  const teams = rows
+    .filter((entry) => winnerIds.includes(entry.playerId))
+    .map((entry) => entry.team)
+    .filter((team): team is TeamId => team === TEAM_SIGNAL || team === TEAM_STATIC);
+  return [...new Set(teams)];
 }
 
 function requireHost(room: RoomRow, email: string) {
@@ -536,16 +731,21 @@ function makeRoomCode() {
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join("");
 }
 
-function resolveMode(value: string, roomId: number, roundNumber: number): GameModeId | null {
+function resolveMode(value: string, roomId: number, matchNumber: number, roundNumber: number): GameModeId | null {
   if (value === RANDOM_MODE) {
-    return GAME_MODES[(roomId * 5 + roundNumber * 7) % GAME_MODES.length].id;
+    return GAME_MODES[(roomId * 5 + matchNumber * 3 + roundNumber * 7) % GAME_MODES.length].id;
   }
   return isGameModeId(value) ? value : null;
 }
 
-function choosePrompt(mode: GameModeId, roomId: number, roundNumber: number) {
+function automaticMode(roomId: number, matchNumber: number, roundNumber: number): GameModeId {
+  const offset = (roomId * 3 + matchNumber * 5) % GAME_MODES.length;
+  return GAME_MODES[(offset + roundNumber - 1) % GAME_MODES.length].id;
+}
+
+function choosePrompt(mode: GameModeId, roomId: number, matchNumber: number, roundNumber: number) {
   const bank = PROMPTS[mode];
-  return bank[(roomId * 11 + roundNumber * 13) % bank.length];
+  return bank[(roomId * 11 + matchNumber * 5 + roundNumber * 13) % bank.length];
 }
 
 class HttpError extends Error {
