@@ -4,8 +4,8 @@ interface D1Meta {
 }
 
 interface D1Result<T = unknown> {
-  results?: T[];
-  success?: boolean;
+  results: T[];
+  success: boolean;
   meta?: D1Meta;
   error?: string;
 }
