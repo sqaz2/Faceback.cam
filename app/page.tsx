@@ -102,21 +102,22 @@ export default function Home() {
       <section className="arena-home-section section-pad">
         <div>
           <p className="eyebrow"><Radio size={16} /> Live creative arena</p>
-          <h2>Make fast. Vote blind. Reveal the creator after.</h2>
+          <h2>Make fast. Vote blind. Then the winner schools the room.</h2>
           <p>
-            Short rounds borrow the energy of improv and old social creativity
-            games: everyone gets the same prompt, everyone makes a move, and the
-            room votes on the work without knowing whose it is.
+            Choose Rap Battle, Punchline, Hook Lab, Creative Pitch, Caption Clash
+            or Flip It. Everyone gets the same constraint, the room judges the
+            work before seeing the creator, and the winner breaks down the move
+            so everyone leaves with something reusable.
           </p>
           <Link className="button button-dark" href="/arena">
             Create or join a room <ArrowRight size={18} />
           </Link>
         </div>
         <div className="arena-home-flow" aria-label="Arena round flow">
-          <span>01 PROMPT</span>
+          <span>01 CHOOSE GAME</span>
           <span>02 CREATE</span>
           <span>03 BLIND VOTE</span>
-          <span>04 PROFILE REVEAL</span>
+          <span>04 WINNER TEACHES</span>
         </div>
       </section>
 
