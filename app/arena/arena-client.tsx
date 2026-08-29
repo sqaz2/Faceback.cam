@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Copy, Crown, Radio, Sparkles, Users } from "lucide-react";
 
 type ArenaState = {
@@ -98,13 +98,18 @@ export function ArenaRoom({ code }: { code: string }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const roundRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/arena/room?code=${encodeURIComponent(code)}`, { cache: "no-store" });
     const data = (await response.json()) as ArenaState & { error?: string };
     if (!response.ok) throw new Error(data.error || "Unable to load room");
+    const nextRoundId = data.round?.id ?? null;
+    if (roundRef.current !== nextRoundId) {
+      roundRef.current = nextRoundId;
+      setEntry(data.mySubmission || "");
+    }
     setState(data);
-    setEntry((current) => current || data.mySubmission || "");
   }, [code]);
 
   useEffect(() => {
@@ -211,7 +216,7 @@ export function ArenaRoom({ code }: { code: string }) {
                 </article>
               ))}
               <div className="arena-breakdown"><span>WHY DID IT WORK?</span><p>Look for specificity, surprise, compression and rhythm. The winner gets the floor; the room gets to steal the principle, not the answer.</p></div>
-              {state.room.isHost ? <button className="button button-primary" onClick={() => { setEntry(""); act("start"); }} disabled={busy}>Next prompt <ArrowRight size={18} /></button> : <div className="arena-waiting">Waiting for the next prompt…</div>}
+              {state.room.isHost ? <button className="button button-primary" onClick={() => act("start")} disabled={busy}>Next prompt <ArrowRight size={18} /></button> : <div className="arena-waiting">Waiting for the next prompt…</div>}
             </div>
           )}
           {error && <p className="arena-error">{error}</p>}
