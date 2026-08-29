@@ -4,6 +4,7 @@ import { getChatGPTUser } from "../chatgpt-auth";
 export const RESERVED_HANDLES = new Set([
   "api",
   "arena",
+  "watch",
   "join",
   "studio",
   "signin-with-chatgpt",
