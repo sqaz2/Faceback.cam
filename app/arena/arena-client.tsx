@@ -4,6 +4,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Copy, Crown, Radio, Sparkles, Users } from "lucide-react";
+import { GAME_MODES, RANDOM_MODE, getGameMode, type ModeChoice } from "./game-modes";
+
+type Teachback = {
+  intent: string;
+  move: string;
+  lesson: string;
+};
+
+type Winner = {
+  submissionId: number;
+  playerId: number;
+  content: string;
+  author: string;
+  profileHandle: string;
+  voteCount: number;
+  teachback: Teachback | null;
+};
 
 type ArenaState = {
   room: { code: string; phase: "lobby" | "answering" | "voting" | "results"; roundNumber: number; maxPlayers: number; isHost: boolean };
@@ -14,8 +31,9 @@ type ArenaState = {
   mySubmissionId: number | null;
   mySubmission: string;
   myVoteId: number | null;
-  winners: Array<{ submissionId: number; content: string; author: string; profileHandle: string; voteCount: number }>;
-  counts: { players: number; submissions: number; votes: number };
+  winners: Winner[];
+  meIsWinner: boolean;
+  counts: { players: number; submissions: number; votes: number; teachbacks: number };
 };
 
 async function arenaAction(payload: Record<string, unknown>) {
@@ -64,12 +82,12 @@ export function ArenaLobby() {
       <section className="arena-landing">
         <p className="eyebrow"><Radio size={16} /> LIVE CREATIVE ARENA</p>
         <h1>Make fast. Vote blind. <span>Study what won.</span></h1>
-        <p className="arena-lede">Short creativity rounds built for punchlines, bars, hooks, concepts and weird ideas. Nobody sees the creator until voting is over.</p>
+        <p className="arena-lede">Rap battles, punchlines, hooks, pitches, captions and remixes. Everyone gets the same constraint. Nobody sees the creator until voting is over.</p>
         <div className="arena-entry-grid">
           <article className="arena-entry-card arena-entry-primary">
             <Sparkles size={26} />
             <h2>Start a room</h2>
-            <p>Host up to eight creators and control when each round moves from making to voting.</p>
+            <p>Host up to eight creators, choose the game and control when the room moves from making to voting.</p>
             <button className="button button-primary" onClick={createRoom} disabled={busy}>Create room <ArrowRight size={18} /></button>
           </article>
           <article className="arena-entry-card">
@@ -82,9 +100,18 @@ export function ArenaLobby() {
             </div>
           </article>
         </div>
+        <div className="arena-mode-preview">
+          {GAME_MODES.map((mode) => (
+            <article key={mode.id}>
+              <span>{mode.kicker}</span>
+              <strong>{mode.name}</strong>
+              <p>{mode.description}</p>
+            </article>
+          ))}
+        </div>
         {error && <p className="arena-error">{error}</p>}
         <div className="arena-rules">
-          <span>01 · Prompt</span><span>02 · Create</span><span>03 · Blind vote</span><span>04 · Winner revealed</span>
+          <span>01 · Choose game</span><span>02 · Create</span><span>03 · Blind vote</span><span>04 · Winner teaches</span>
         </div>
       </section>
     </main>
@@ -95,6 +122,10 @@ export function ArenaRoom({ code }: { code: string }) {
   const router = useRouter();
   const [state, setState] = useState<ArenaState | null>(null);
   const [entry, setEntry] = useState("");
+  const [selectedMode, setSelectedMode] = useState<ModeChoice>(RANDOM_MODE);
+  const [intent, setIntent] = useState("");
+  const [move, setMove] = useState("");
+  const [lesson, setLesson] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -108,6 +139,15 @@ export function ArenaRoom({ code }: { code: string }) {
     if (roundRef.current !== nextRoundId) {
       roundRef.current = nextRoundId;
       setEntry(data.mySubmission || "");
+      setIntent("");
+      setMove("");
+      setLesson("");
+    }
+    const mine = data.me ? data.winners.find((winner) => winner.playerId === data.me?.id) : null;
+    if (mine?.teachback) {
+      setIntent(mine.teachback.intent);
+      setMove(mine.teachback.move);
+      setLesson(mine.teachback.lesson);
     }
     setState(data);
   }, [code]);
@@ -134,6 +174,8 @@ export function ArenaRoom({ code }: { code: string }) {
   }
 
   const sortedScores = useMemo(() => [...(state?.players || [])].sort((a, b) => b.score - a.score), [state?.players]);
+  const mode = state?.round ? getGameMode(state.round.mode) : null;
+  const myWinner = state?.me ? state.winners.find((winner) => winner.playerId === state.me?.id) : null;
 
   if (!state) {
     return <main className="arena-shell"><div className="arena-loading">Connecting to room {code}…</div></main>;
@@ -141,7 +183,7 @@ export function ArenaRoom({ code }: { code: string }) {
 
   if (!state.me) {
     return (
-      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You're not in this room yet.</h1><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}</p>}</section></main>
+      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You&apos;re not in this room yet.</h1><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}</p>}</section></main>
     );
   }
 
@@ -167,20 +209,26 @@ export function ArenaRoom({ code }: { code: string }) {
           {state.room.phase === "lobby" && (
             <div className="arena-phase-card">
               <p className="eyebrow"><Radio size={15} /> ROOM OPEN</p>
-              <h1>Get the creators in.</h1>
-              <p>Share <strong>{code}</strong>. The host starts when at least two people are here.</p>
-              {state.room.isHost ? <button className="button button-primary" onClick={() => act("start")} disabled={busy || state.counts.players < 2}>Start round one <ArrowRight size={18} /></button> : <div className="arena-waiting">Waiting for the host…</div>}
+              <h1>Pick the kind of trouble.</h1>
+              <p>Share <strong>{code}</strong>. The host chooses a game and starts when at least two creators are here.</p>
+              {state.room.isHost ? (
+                <>
+                  <ModePicker value={selectedMode} onChange={setSelectedMode} />
+                  <button className="button button-primary arena-start-button" onClick={() => act("start", { mode: selectedMode })} disabled={busy || state.counts.players < 2}>Start round one <ArrowRight size={18} /></button>
+                </>
+              ) : <div className="arena-waiting">Host is choosing the first game…</div>}
             </div>
           )}
 
           {state.room.phase === "answering" && state.round && (
             <div className="arena-phase-card">
-              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>{state.round.mode}</span></div>
+              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>{mode?.name ?? state.round.mode}</span></div>
+              {mode && <ModeBrief mode={mode} />}
               <h1>{state.round.prompt}</h1>
-              <textarea value={entry} onChange={(event) => setEntry(event.target.value.slice(0, 280))} maxLength={280} placeholder="Make your move…" />
+              <textarea value={entry} onChange={(event) => setEntry(event.target.value.slice(0, mode?.maxChars ?? 280))} maxLength={mode?.maxChars ?? 280} placeholder={mode?.placeholder ?? "Make your move…"} />
               <div className="arena-submit-row">
                 <button className="button button-primary" onClick={() => act("submit", { content: entry })} disabled={busy || entry.trim().length < 2}>{state.mySubmissionId ? "Update entry" : "Lock it in"}</button>
-                <span>{state.counts.submissions}/{state.counts.players} locked · {entry.length}/280</span>
+                <span>{state.counts.submissions}/{state.counts.players} locked · {entry.length}/{mode?.maxChars ?? 280}</span>
               </div>
               {state.room.isHost && <button className="arena-host-control" onClick={() => act("open-voting")} disabled={busy || state.counts.submissions < 2}>Open blind voting</button>}
             </div>
@@ -188,9 +236,10 @@ export function ArenaRoom({ code }: { code: string }) {
 
           {state.room.phase === "voting" && state.round && (
             <div className="arena-phase-card">
-              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>BLIND VOTE</span></div>
+              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>BLIND {mode?.shortName.toUpperCase() ?? "VOTE"}</span></div>
+              {mode && <ModeBrief mode={mode} compact />}
               <h1>{state.round.prompt}</h1>
-              <p className="arena-vote-help">Creators stay hidden until the reveal. Vote for the move that works best—not the person.</p>
+              <p className="arena-vote-help">Creators stay hidden until the reveal. Judge the move using the game&apos;s three lenses—not who you think wrote it.</p>
               <div className="arena-submissions">
                 {state.submissions.map((submission, index) => (
                   <button key={submission.id} className={`arena-submission ${state.myVoteId === submission.id ? "arena-submission-voted" : ""} ${submission.isMine ? "arena-submission-mine" : ""}`} onClick={() => !submission.isMine && act("vote", { submissionId: submission.id })} disabled={busy || submission.isMine}>
@@ -205,23 +254,104 @@ export function ArenaRoom({ code }: { code: string }) {
           )}
 
           {state.room.phase === "results" && state.round && (
-            <div className="arena-phase-card">
-              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>RESULT</span></div>
+            <div className="arena-phase-card arena-results-card">
+              <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}</span><span>{mode?.name ?? "RESULT"}</span></div>
               <p className="eyebrow"><Crown size={16} /> WINNING MOVE</p>
               {state.winners.map((winner) => (
                 <article className="arena-winner" key={winner.submissionId}>
                   <blockquote>“{winner.content}”</blockquote>
                   <div><strong>{winner.author}</strong><span>{winner.voteCount} vote{winner.voteCount === 1 ? "" : "s"}</span></div>
-                  {winner.profileHandle && <Link href={`/@${winner.profileHandle}`}>Examine the winner's creator profile <ArrowRight size={16} /></Link>}
+                  {winner.profileHandle && <Link href={`/@${winner.profileHandle}`}>Examine the winner&apos;s creator profile <ArrowRight size={16} /></Link>}
+                  {winner.teachback ? (
+                    <WinnerBreakdown teachback={winner.teachback} author={winner.author} />
+                  ) : (
+                    <div className="arena-school-pending"><Sparkles size={16} /> Waiting for {winner.author} to school the room.</div>
+                  )}
                 </article>
               ))}
-              <div className="arena-breakdown"><span>WHY DID IT WORK?</span><p>Look for specificity, surprise, compression and rhythm. The winner gets the floor; the room gets to steal the principle, not the answer.</p></div>
-              {state.room.isHost ? <button className="button button-primary" onClick={() => act("start")} disabled={busy}>Next prompt <ArrowRight size={18} /></button> : <div className="arena-waiting">Waiting for the next prompt…</div>}
+
+              {state.meIsWinner && myWinner && !myWinner.teachback && (
+                <section className="arena-teachback-form">
+                  <div>
+                    <p className="eyebrow">YOUR FLOOR</p>
+                    <h2>School the room.</h2>
+                    <p>You won the blind vote. Now expose the decisions behind it so everyone gets a reusable principle—not just your answer.</p>
+                  </div>
+                  <label>
+                    <span>What were you aiming for?</span>
+                    <textarea value={intent} onChange={(event) => setIntent(event.target.value.slice(0, 260))} maxLength={260} placeholder="The reaction, feeling or effect I wanted…" />
+                  </label>
+                  <label>
+                    <span>What move did you make?</span>
+                    <textarea value={move} onChange={(event) => setMove(event.target.value.slice(0, 420))} maxLength={420} placeholder="The specific choice, contrast, rhythm, wording or trick…" />
+                  </label>
+                  <label>
+                    <span>What should everyone steal from the technique?</span>
+                    <textarea value={lesson} onChange={(event) => setLesson(event.target.value.slice(0, 260))} maxLength={260} placeholder="A principle they can reuse without copying the answer…" />
+                  </label>
+                  <button className="button button-primary" onClick={() => act("teachback", { intent, move, lesson })} disabled={busy || intent.trim().length < 3 || move.trim().length < 3 || lesson.trim().length < 3}>Teach the room <Sparkles size={17} /></button>
+                </section>
+              )}
+
+              {mode && (
+                <div className="arena-breakdown">
+                  <span>WHAT THE ROOM WAS JUDGING</span>
+                  <p>{mode.criteria.join(" · ")}. The vote identifies the move that landed; the winner breakdown explains how they got there.</p>
+                </div>
+              )}
+
+              {state.room.isHost ? (
+                <section className="arena-next-round">
+                  <div><span>NEXT GAME</span><small>{state.counts.teachbacks > 0 ? "Winner lesson captured." : "You can continue now, or give the winner the floor first."}</small></div>
+                  <ModePicker value={selectedMode} onChange={setSelectedMode} compact />
+                  <button className="button button-primary" onClick={() => act("start", { mode: selectedMode })} disabled={busy}>Start next round <ArrowRight size={18} /></button>
+                </section>
+              ) : <div className="arena-waiting">Waiting for the host to choose the next game…</div>}
             </div>
           )}
           {error && <p className="arena-error">{error}</p>}
         </section>
       </section>
     </main>
+  );
+}
+
+type ModeMeta = (typeof GAME_MODES)[number];
+
+function ModePicker({ value, onChange, compact = false }: { value: ModeChoice; onChange: (mode: ModeChoice) => void; compact?: boolean }) {
+  return (
+    <div className={`arena-mode-picker ${compact ? "arena-mode-picker-compact" : ""}`}>
+      <button className={value === RANDOM_MODE ? "arena-mode-selected" : ""} onClick={() => onChange(RANDOM_MODE)} type="button">
+        <span>MIX IT UP</span><strong>Random</strong><small>Let FACEBACK pick.</small>
+      </button>
+      {GAME_MODES.map((mode) => (
+        <button className={value === mode.id ? "arena-mode-selected" : ""} key={mode.id} onClick={() => onChange(mode.id)} type="button">
+          <span>{mode.kicker}</span><strong>{mode.name}</strong>{!compact && <small>{mode.description}</small>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ModeBrief({ mode, compact = false }: { mode: ModeMeta; compact?: boolean }) {
+  return (
+    <div className={`arena-mode-brief ${compact ? "arena-mode-brief-compact" : ""}`}>
+      <div><span>{mode.kicker}</span><strong>{mode.name}</strong></div>
+      {!compact && <p>{mode.description}</p>}
+      <div className="arena-criteria">{mode.criteria.map((criterion) => <b key={criterion}>{criterion}</b>)}</div>
+    </div>
+  );
+}
+
+function WinnerBreakdown({ teachback, author }: { teachback: Teachback; author: string }) {
+  return (
+    <section className="arena-winner-breakdown">
+      <div className="arena-school-header"><Sparkles size={17} /><span>{author.toUpperCase()} SCHOOLS THE ROOM</span></div>
+      <div className="arena-school-grid">
+        <article><span>01 · AIM</span><strong>What I wanted</strong><p>{teachback.intent}</p></article>
+        <article><span>02 · MOVE</span><strong>What I did</strong><p>{teachback.move}</p></article>
+        <article><span>03 · STEAL THIS</span><strong>The reusable principle</strong><p>{teachback.lesson}</p></article>
+      </div>
+    </section>
   );
 }
