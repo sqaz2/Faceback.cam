@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Layers3, Link2, ScanLine, Sparkles } from "lucide-react";
+import { ArrowRight, Layers3, Link2, Radio, ScanLine, Sparkles } from "lucide-react";
 import { featuredWork, movementQuestions } from "./content";
 
 export default function Home() {
@@ -10,6 +10,7 @@ export default function Home() {
           FACEBACK<span>.CAM</span>
         </Link>
         <nav className="desktop-nav" aria-label="Main navigation">
+          <Link href="/arena">Arena</Link>
           <a href="#work">Work</a>
           <a href="#questions">Questions</a>
           <a href="#stories">Stories</a>
@@ -30,15 +31,15 @@ export default function Home() {
           </h1>
           <p className="hero-lede">
             Bring your music, art, videos, writing, games and experiments
-            together. Build a living home for your work—and join creators
-            facing back at the anti-AI backlash.
+            together. Then meet other creators in fast live rounds where the
+            work gets judged before the creator gets revealed.
           </p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="/join">
-              Become a founding creator <ArrowRight size={18} />
+            <Link className="button button-primary" href="/arena">
+              Enter the creative arena <ArrowRight size={18} />
             </Link>
-            <Link className="button button-quiet" href="/@callmedaddy">
-              Explore a creator page
+            <Link className="button button-quiet" href="/join">
+              Build your creator page
             </Link>
           </div>
         </div>
@@ -96,6 +97,27 @@ export default function Home() {
             <span>One profile. Every medium.</span>
           </div>
         </article>
+      </section>
+
+      <section className="arena-home-section section-pad">
+        <div>
+          <p className="eyebrow"><Radio size={16} /> Live creative arena</p>
+          <h2>Make fast. Vote blind. Reveal the creator after.</h2>
+          <p>
+            Short rounds borrow the energy of improv and old social creativity
+            games: everyone gets the same prompt, everyone makes a move, and the
+            room votes on the work without knowing whose it is.
+          </p>
+          <Link className="button button-dark" href="/arena">
+            Create or join a room <ArrowRight size={18} />
+          </Link>
+        </div>
+        <div className="arena-home-flow" aria-label="Arena round flow">
+          <span>01 PROMPT</span>
+          <span>02 CREATE</span>
+          <span>03 BLIND VOTE</span>
+          <span>04 PROFILE REVEAL</span>
+        </div>
       </section>
 
       <section className="section-pad split-section" id="work">
