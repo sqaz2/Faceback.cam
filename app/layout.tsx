@@ -3,6 +3,7 @@ import "./globals.css";
 import "./arena.css";
 import "./arena-modes.css";
 import "./arena-match.css";
+import "./arena-public.css";
 
 export const metadata: Metadata = {
   title: {
