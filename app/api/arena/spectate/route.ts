@@ -180,10 +180,11 @@ async function currentRound(room: PublicRoom) {
 async function playerRows(roomId: number) {
   const result = await db()
     .prepare(
-      `SELECT p.id, pr.display_name AS displayName, pr.handle AS profileHandle,
+      `SELECT p.id, p.display_name AS displayName,
+        CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.score, p.team
        FROM arena_players p
-       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
        WHERE p.room_id = ? AND p.active = 1
        ORDER BY p.score DESC, p.joined_at ASC`,
     )
@@ -196,7 +197,7 @@ async function submissionRows(roundId: number) {
   const result = await db()
     .prepare(
       `SELECT s.id, s.player_id AS playerId, s.content,
-        COALESCE(NULLIF(pr.display_name, ''), 'FACEBACK Creator') AS author,
+        COALESCE(NULLIF(p.display_name, ''), 'FACEBACK Guest') AS author,
         CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.team AS team, COUNT(v.id) AS voteCount
        FROM arena_submissions s
@@ -204,7 +205,7 @@ async function submissionRows(roundId: number) {
        LEFT JOIN profiles pr ON pr.id = p.profile_id
        LEFT JOIN arena_votes v ON v.submission_id = s.id
        WHERE s.round_id = ?
-       GROUP BY s.id, s.player_id, s.content, pr.display_name, pr.handle, pr.published, p.team
+       GROUP BY s.id, s.player_id, s.content, p.display_name, pr.handle, pr.published, p.team
        ORDER BY s.id ASC`,
     )
     .bind(roundId)
