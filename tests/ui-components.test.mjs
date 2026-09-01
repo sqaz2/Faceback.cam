@@ -66,6 +66,24 @@ test("the public mobile call to action opens the Arena instead of profile creati
   assert.match(homeSource, />\s*Play\s*</);
 });
 
+test("room creation defaults to public, while private rooms remain link-only", async () => {
+  const [clientSource, roomSource, publicSource, homeSource] = await Promise.all([
+    readFile(path.join(root, "app/arena/arena-client.tsx"), "utf8"),
+    readFile(path.join(root, "app/api/arena/room/route.ts"), "utf8"),
+    readFile(path.join(root, "app/api/arena/public/route.ts"), "utf8"),
+    readFile(path.join(root, "app/page.tsx"), "utf8"),
+  ]);
+
+  assert.match(clientSource, /useState<RoomVisibility>\("public"\)/);
+  assert.match(clientSource, /action: "create", visibility/);
+  assert.match(clientSource, /Listed \+ shareable/);
+  assert.match(clientSource, /Link-only/);
+  assert.match(roomSource, /\|\| "public"/);
+  assert.match(roomSource, /INSERT INTO arena_rooms \(code, host_email, visibility\)/);
+  assert.match(publicSource, /WHERE r\.visibility = 'public'/);
+  assert.match(homeSource, /<PublicRooms \/>/);
+});
+
 test("all game modes and timer presets have valid, unique contracts", async () => {
   const { GAME_MODES, getGameMode } = await vite.ssrLoadModule("/app/arena/game-modes.ts");
   const { MATCH_LENGTHS, TIMER_PRESETS, getTimerPreset } = await vite.ssrLoadModule("/app/arena/match-config.ts");
@@ -79,6 +97,40 @@ test("all game modes and timer presets have valid, unique contracts", async () =
   assert.equal(new Set(TIMER_PRESETS.map((preset) => preset.id)).size, TIMER_PRESETS.length);
   assert.ok(TIMER_PRESETS.every((preset) => preset.answerSeconds > preset.voteSeconds));
   assert.equal(getTimerPreset("invalid").id, "STANDARD");
+});
+
+test("CPU players create, vote, and teach deterministically without an external model", async () => {
+  const { CPU_PERSONAS, chooseCpuVote, cpuTeachback, createCpuAnswer } = await vite.ssrLoadModule("/app/arena/bots.ts");
+  const { GAME_MODES } = await vite.ssrLoadModule("/app/arena/game-modes.ts");
+
+  assert.equal(CPU_PERSONAS.length, 7);
+  assert.equal(new Set(CPU_PERSONAS.map((persona) => persona.key)).size, CPU_PERSONAS.length);
+  for (const mode of GAME_MODES) {
+    const first = createCpuAnswer(mode.id, "Shared prompt", "spark", 2, mode.maxChars);
+    const repeat = createCpuAnswer(mode.id, "Shared prompt", "spark", 2, mode.maxChars);
+    assert.equal(first, repeat);
+    assert.ok(first.length >= 2 && first.length <= mode.maxChars);
+
+    const choices = [
+      { id: 11, playerId: 1, content: "A clean human answer with rhythm." },
+      { id: 12, playerId: 2, content: "A stranger turn—short, sharp, and memorable!" },
+    ];
+    const vote = chooseCpuVote(mode.id, "Shared prompt", "spark", choices);
+    assert.ok(vote === 11 || vote === 12);
+    assert.equal(vote, chooseCpuVote(mode.id, "Shared prompt", "spark", choices));
+
+    const lesson = cpuTeachback(mode.id, "spark");
+    assert.ok(lesson.intent.length > 10);
+    assert.ok(lesson.move.length > 10);
+    assert.ok(lesson.lesson.length > 10);
+  }
+
+  const roomSource = await readFile(path.join(root, "app/api/arena/room/route.ts"), "utf8");
+  const liveSource = await readFile(path.join(root, "app/api/arena/_live.ts"), "utf8");
+  assert.match(roomSource, /action === "add-bot"/);
+  assert.match(roomSource, /createCpuAnswer/);
+  assert.match(liveSource, /chooseCpuVote/);
+  assert.match(liveSource, /cpuTeachback/);
 });
 
 test("room codes are long enough for public spectator links and omit ambiguous characters", async () => {

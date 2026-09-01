@@ -29,7 +29,7 @@ test("build packages every migration byte-for-byte", async () => {
   const outputDirectory = path.join(root, "dist/.openai/drizzle");
   const migrations = (await readdir(sourceDirectory)).filter((name) => name.endsWith(".sql")).sort();
 
-  assert.ok(migrations.includes("0006_arena_integrity.sql"));
+  assert.ok(migrations.includes("0007_arena_public_rooms_and_bots.sql"));
   for (const migration of migrations) {
     const [source, output] = await Promise.all([
       readFile(path.join(sourceDirectory, migration), "utf8"),

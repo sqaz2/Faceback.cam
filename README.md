@@ -15,8 +15,12 @@ FACEBACK.CAM is a creator-home and live creativity platform for people who use A
 - Mobile-first creator studio
 - Creative Arena at `/arena`
   - 8-character invite codes with an ambiguity-free alphabet
-  - Up to 8 signed-in creators per room
-  - Published FACEBACK profile required; account emails are never used as public names
+  - Up to 8 signed-in players per room; a FACEBACK creator profile is optional
+  - Public rooms by default, discoverable on the home page, or private link-only rooms
+  - Shareable player links for both public and private rooms
+  - Built-in CPU opponents with distinct creative styles, deterministic voting and automatic winner teach-backs
+  - No model API key or per-round AI cost for CPU players
+  - Account emails are never used as public names
   - 3- or 5-round matches
   - Solo ladder or auto-balanced **Team Signal vs Team Static** competition
   - Automatic no-repeat mode rotation or host-picked games
@@ -49,7 +53,7 @@ FACEBACK.CAM is a creator-home and live creativity platform for people who use A
 
 ## Creative Arena match loop
 
-1. Host chooses 3 or 5 rounds, solo or teams, automatic or host-picked mode rotation, and a timer pace.
+1. Host chooses public or private, adds human and/or CPU opponents, then chooses 3 or 5 rounds, solo or teams, automatic or host-picked mode rotation, and a timer pace.
 2. Everyone gets the same creative constraint each round.
 3. Creators submit without attribution; in team matches the team is hidden too.
 4. When the create clock expires, FACEBACK opens voting automatically once at least two entries exist; otherwise the room goes into overtime.
@@ -76,6 +80,8 @@ No account email is returned by the spectator API or creator Arena-history query
 ## Arena transport
 
 The first multiplayer release intentionally uses Cloudflare D1 plus lightweight client polling. Creative rounds do not require frame-level synchronization, so this keeps the room model simple and deployable without another API key. The transport can later move to Durable Objects/WebSockets while preserving the same room, match, round, deadline, submission, vote and teach-back model.
+
+CPU opponents are intentionally local and deterministic in this release: curated mode-specific answer banks create their entries, and persona-weighted scoring chooses their blind votes. That makes rooms free, fast and repeatable today. A future model-powered CPU tier can replace the entry generator without changing the room or voting schema.
 
 ## Development
 
@@ -104,5 +110,6 @@ The creator/profile Drizzle schema lives in `db/schema.ts`. Arena runtime SQL is
 - `0004_arena_matches.sql` — match settings, match numbering, team assignments and team scoring
 - `0005_arena_live_public.sql` — server timers/deadlines plus indexes supporting public Arena history
 - `0006_arena_integrity.sql` — stable profile ownership, active membership, idempotent round awards and action-rate counters
+- `0007_arena_public_rooms_and_bots.sql` — public/private room discovery plus CPU player identity
 
 Arena runtime queries are raw D1 queries in its API routes. Reveals use a unique award ledger plus score recomputation, so retries cannot increment a winner twice. Authenticated mutations use D1-backed fixed-window limits; public room codes use eight ambiguity-free characters to make spectator-code enumeration impractical.

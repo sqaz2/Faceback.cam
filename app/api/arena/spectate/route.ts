@@ -33,6 +33,7 @@ type PublicPlayer = {
   profileHandle: string;
   score: number;
   team: string;
+  isBot: number;
 };
 
 type PublicSubmission = {
@@ -134,6 +135,7 @@ export async function GET(request: Request) {
         profileHandle: player.profileHandle,
         score: player.score,
         team: player.team,
+        isBot: Boolean(player.isBot),
       })),
       round,
       roundHistory: history,
@@ -182,7 +184,7 @@ async function playerRows(roomId: number) {
     .prepare(
       `SELECT p.id, p.display_name AS displayName,
         CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
-        p.score, p.team
+        p.score, p.team, p.is_bot AS isBot
        FROM arena_players p
        LEFT JOIN profiles pr ON pr.id = p.profile_id
        WHERE p.room_id = ? AND p.active = 1

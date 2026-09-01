@@ -40,10 +40,84 @@ test("Arena migrations apply cleanly and preserve referential integrity", async 
     assert.ok(tables.includes("arena_round_awards"));
     assert.ok(tables.includes("arena_action_limits"));
 
-    const columns = database.prepare("PRAGMA table_info(arena_players)").all().map((row) => row.name);
-    assert.ok(columns.includes("profile_id"));
-    assert.ok(columns.includes("active"));
-    assert.ok(columns.includes("left_at"));
+    const playerColumns = database.prepare("PRAGMA table_info(arena_players)").all().map((row) => row.name);
+    assert.ok(playerColumns.includes("profile_id"));
+    assert.ok(playerColumns.includes("active"));
+    assert.ok(playerColumns.includes("left_at"));
+    assert.ok(playerColumns.includes("is_bot"));
+    assert.ok(playerColumns.includes("bot_key"));
+    const roomColumns = database.prepare("PRAGMA table_info(arena_rooms)").all().map((row) => row.name);
+    assert.ok(roomColumns.includes("visibility"));
+    assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
+  } finally {
+    database.close();
+  }
+});
+
+test("public rooms are discoverable while private rooms stay link-only", async () => {
+  const database = await migratedDatabase();
+  try {
+    database.exec(`
+      INSERT INTO arena_rooms (code, host_email) VALUES ('PUBLIC23', 'public@example.test');
+      INSERT INTO arena_rooms (code, host_email, visibility) VALUES ('PRIVATE2', 'private@example.test', 'private');
+      INSERT INTO arena_players (room_id, user_email, display_name, profile_handle)
+      VALUES (1, 'public@example.test', 'Public Host', '');
+      INSERT INTO arena_players
+        (room_id, user_email, display_name, profile_handle, is_bot, bot_key)
+      VALUES (1, 'cpu@example.invalid', 'Spark.exe', '', 1, 'spark');
+      INSERT INTO arena_players (room_id, user_email, display_name, profile_handle)
+      VALUES (2, 'private@example.test', 'Private Host', '');
+    `);
+
+    const rooms = database.prepare(`
+      SELECT r.code,
+        COUNT(CASE WHEN p.active = 1 THEN 1 END) AS playerCount,
+        COUNT(CASE WHEN p.active = 1 AND p.is_bot = 1 THEN 1 END) AS botCount
+      FROM arena_rooms r
+      LEFT JOIN arena_players p ON p.room_id = r.id
+      WHERE r.visibility = 'public'
+      GROUP BY r.id, r.code
+    `).all();
+
+    assert.deepEqual(rooms.map((room) => ({ ...room })), [
+      { code: "PUBLIC23", playerCount: 2, botCount: 1 },
+    ]);
+    assert.deepEqual({ ...database.prepare("SELECT visibility FROM arena_rooms WHERE code = 'PUBLIC23'").get() }, { visibility: "public" });
+  } finally {
+    database.close();
+  }
+});
+
+test("CPU submissions and votes obey the same Arena integrity rules", async () => {
+  const database = await migratedDatabase();
+  try {
+    database.exec(`
+      INSERT INTO arena_rooms (code, host_email, phase, match_status, round_number)
+      VALUES ('CPUGAME2', 'host@example.test', 'answering', 'active', 1);
+      INSERT INTO arena_players (room_id, user_email, display_name, profile_handle)
+      VALUES (1, 'host@example.test', 'Host', '');
+      INSERT INTO arena_players
+        (room_id, user_email, display_name, profile_handle, is_bot, bot_key)
+      VALUES (1, 'cpu@example.invalid', 'Spark.exe', '', 1, 'spark');
+      INSERT INTO arena_rounds (room_id, match_number, round_number, prompt, mode, status)
+      VALUES (1, 1, 1, 'Write a hook', 'HOOK', 'answering');
+      INSERT INTO arena_submissions (round_id, player_id, content)
+      VALUES (1, 1, 'Human answer'), (1, 2, 'CPU answer');
+      UPDATE arena_rounds SET status = 'voting' WHERE id = 1;
+      INSERT OR IGNORE INTO arena_votes (round_id, voter_player_id, submission_id)
+      SELECT 1, 2, 1
+      WHERE EXISTS (SELECT 1 FROM arena_rounds WHERE id = 1 AND status = 'voting');
+    `);
+
+    assert.deepEqual(
+      { ...database.prepare("SELECT is_bot AS isBot, bot_key AS botKey FROM arena_players WHERE id = 2").get() },
+      { isBot: 1, botKey: "spark" },
+    );
+    assert.equal(database.prepare("SELECT submission_id AS submissionId FROM arena_votes WHERE voter_player_id = 2").get().submissionId, 1);
+    assert.throws(
+      () => database.exec("INSERT INTO arena_votes (round_id, voter_player_id, submission_id) VALUES (1, 2, 2)"),
+      /UNIQUE constraint failed/,
+    );
     assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
   } finally {
     database.close();

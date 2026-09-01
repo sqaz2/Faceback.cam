@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Eye, Layers3, Link2, Radio, ScanLine, Sparkles } from "lucide-react";
 import { featuredWork, movementQuestions } from "./content";
+import { PublicRooms } from "./arena/public-rooms";
 
 export default function Home() {
   return (
@@ -126,6 +127,8 @@ export default function Home() {
           <span>04 WINNER TEACHES</span>
         </div>
       </section>
+
+      <PublicRooms />
 
       <section className="section-pad split-section" id="work">
         <div className="section-heading">
