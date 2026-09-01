@@ -22,14 +22,15 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   if (!email) return null;
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
-  const fullName =
+  const decodedFullName =
     encodedFullName &&
     requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === PERCENT_ENCODED_UTF8
       ? safeDecodeURIComponent(encodedFullName)
       : null;
+  const fullName = decodedFullName?.trim().slice(0, 70) || null;
 
   return {
-    displayName: fullName ?? email,
+    displayName: fullName ?? "FACEBACK Creator",
     email,
     fullName,
   };

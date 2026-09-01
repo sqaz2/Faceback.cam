@@ -18,6 +18,7 @@ import {
   type TimerPreset,
 } from "./match-config";
 import { RoundClock, TimerPicker } from "./timer-ui";
+import { ARENA_ROOM_CODE_LENGTH, normalizeArenaRoomCode } from "./room-code";
 
 type Teachback = {
   intent: string;
@@ -112,8 +113,8 @@ export function ArenaLobby() {
   }
 
   async function joinRoom() {
-    const normalized = code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-    if (normalized.length !== 5) { setError("Enter the 5-character room code."); return; }
+    const normalized = normalizeArenaRoomCode(code);
+    if (!normalized) { setError(`Enter the ${ARENA_ROOM_CODE_LENGTH}-character room code.`); return; }
     setBusy(true); setError("");
     try {
       await arenaAction({ action: "join", code: normalized });
@@ -144,7 +145,7 @@ export function ArenaLobby() {
             <h2>Join a room</h2>
             <p>Got an invite code? Drop in between rounds and join the current match.</p>
             <div className="arena-code-entry">
-              <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={5} placeholder="ABCDE" aria-label="Room code" />
+              <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={ARENA_ROOM_CODE_LENGTH} placeholder="ABCD2345" aria-label="Room code" />
               <button onClick={joinRoom} disabled={busy}>Join</button>
             </div>
           </article>
@@ -158,7 +159,12 @@ export function ArenaLobby() {
             </article>
           ))}
         </div>
-        {error && <p className="arena-error">{error}</p>}
+        <p className="arena-vote-help">Arena names, revealed entries, results and winner breakdowns are public. Your email is never shown.</p>
+        {error && (
+          <p className="arena-error">
+            {error}{error.includes("FACEBACK profile") && <> <Link href="/studio">Create your profile</Link>.</>}
+          </p>
+        )}
         <div className="arena-rules">
           <span>01 · Configure match</span><span>02 · Create + vote</span><span>03 · Winner teaches</span><span>04 · Final standings</span>
         </div>
@@ -184,6 +190,7 @@ export function ArenaRoom({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const roundRef = useRef<number | null>(null);
   const setupMatchRef = useRef<number | null>(null);
+  const memberId = state?.me?.id ?? null;
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/arena/room?code=${encodeURIComponent(code)}`, { cache: "no-store" });
@@ -216,12 +223,43 @@ export function ArenaRoom({ code }: { code: string }) {
 
   useEffect(() => {
     let active = true;
-    load().catch((err) => active && setError(err instanceof Error ? err.message : "Unable to load room"));
-    const timer = window.setInterval(() => {
-      load().catch((err) => active && setError(err instanceof Error ? err.message : "Unable to refresh room"));
-    }, 1800);
-    return () => { active = false; window.clearInterval(timer); };
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        await load();
+        if (active) setError("");
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Unable to refresh room");
+      } finally {
+        if (active) timer = window.setTimeout(poll, 2500);
+      }
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (!memberId) return;
+    let active = true;
+    let timer: number | undefined;
+    const heartbeat = async () => {
+      try {
+        await arenaAction({ action: "heartbeat", code });
+      } catch {
+        // Room polling reports actionable connectivity or membership errors.
+      } finally {
+        if (active) timer = window.setTimeout(heartbeat, 30_000);
+      }
+    };
+    timer = window.setTimeout(heartbeat, 30_000);
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [code, memberId]);
 
   async function act(action: string, extra: Record<string, unknown> = {}) {
     setBusy(true); setError("");
@@ -235,17 +273,28 @@ export function ArenaRoom({ code }: { code: string }) {
     setCopied(true); window.setTimeout(() => setCopied(false), 1400);
   }
 
+  async function leaveRoom() {
+    setBusy(true); setError("");
+    try {
+      await arenaAction({ action: "leave", code });
+      router.push("/arena");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to leave room");
+      setBusy(false);
+    }
+  }
+
   const sortedScores = useMemo(() => [...(state?.players || [])].sort((a, b) => b.score - a.score), [state?.players]);
   const mode = state?.round ? getGameMode(state.round.mode) : null;
   const myWinner = state?.me ? state.winners.find((winner) => winner.playerId === state.me?.id) : null;
 
   if (!state) {
-    return <main className="arena-shell"><div className="arena-loading">Connecting to room {code}…</div></main>;
+    return <main className="arena-shell"><div className="arena-loading">Connecting to room {code}…</div>{error && <p className="arena-error">{error}</p>}</main>;
   }
 
   if (!state.me) {
     return (
-      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You&apos;re not in this room yet.</h1><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}</p>}</section></main>
+      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You&apos;re not in this room yet.</h1><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}{error.includes("FACEBACK profile") && <> <Link href="/studio">Create your profile</Link>.</>}</p>}</section></main>
     );
   }
 
@@ -275,7 +324,7 @@ export function ArenaRoom({ code }: { code: string }) {
               <b>{player.score}</b>
             </div>
           ))}
-          <button className="arena-exit" onClick={() => router.push("/arena")}>Leave screen</button>
+          <button className="arena-exit" onClick={leaveRoom} disabled={busy}>Leave room</button>
         </aside>
 
         <section className="arena-stage-live">
@@ -307,7 +356,7 @@ export function ArenaRoom({ code }: { code: string }) {
             <div className="arena-phase-card">
               <div className="arena-round-meta"><span>ROUND {state.round.roundNumber} / {state.room.matchLength}</span><span>{mode?.name ?? state.round.mode}</span></div>
               <RoundTrack state={state} />
-              <RoundClock deadline={state.round.answerDeadlineAt} phase="CREATE" overtimeText="Waiting for at least 2 locked entries" />
+              <RoundClock deadline={state.round.answerDeadlineAt} serverNow={state.serverNow} phase="CREATE" overtimeText="Waiting for at least 2 locked entries" />
               {mode && <ModeBrief mode={mode} />}
               <h1>{state.round.prompt}</h1>
               <textarea value={entry} onChange={(event) => setEntry(event.target.value.slice(0, mode?.maxChars ?? 280))} maxLength={mode?.maxChars ?? 280} placeholder={mode?.placeholder ?? "Make your move…"} />
@@ -323,7 +372,7 @@ export function ArenaRoom({ code }: { code: string }) {
             <div className="arena-phase-card">
               <div className="arena-round-meta"><span>ROUND {state.round.roundNumber} / {state.room.matchLength}</span><span>BLIND {mode?.shortName.toUpperCase() ?? "VOTE"}</span></div>
               <RoundTrack state={state} />
-              <RoundClock deadline={state.round.voteDeadlineAt} phase="VOTE" overtimeText="Waiting for the first creator vote" />
+              <RoundClock deadline={state.round.voteDeadlineAt} serverNow={state.serverNow} phase="VOTE" overtimeText="Waiting for the first creator vote" />
               {mode && <ModeBrief mode={mode} compact />}
               <h1>{state.round.prompt}</h1>
               <p className="arena-vote-help">Creators—and team identities—stay hidden until the reveal. Judge the move using the game&apos;s three lenses.</p>

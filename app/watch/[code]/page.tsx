@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SpectatorRoom } from "../watch-client";
+import { normalizeArenaRoomCode } from "../../arena/room-code";
 
 type WatchPageProps = {
   params: Promise<{ code: string }>;
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 
 export default async function WatchPage({ params }: WatchPageProps) {
   const { code: rawCode } = await params;
-  const code = decodeURIComponent(rawCode).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!/^[A-Z0-9]{5}$/.test(code)) notFound();
+  const code = normalizeArenaRoomCode(decodeURIComponent(rawCode));
+  if (!code) notFound();
   return <SpectatorRoom code={code} />;
 }

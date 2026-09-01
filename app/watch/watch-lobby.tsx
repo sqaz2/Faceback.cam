@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, Eye, Radio } from "lucide-react";
+import { ARENA_ROOM_CODE_LENGTH, normalizeArenaRoomCode } from "../arena/room-code";
 
 export function WatchLobby() {
   const router = useRouter();
@@ -11,9 +12,9 @@ export function WatchLobby() {
   const [error, setError] = useState("");
 
   function watch() {
-    const normalized = code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-    if (normalized.length !== 5) {
-      setError("Enter the 5-character room code.");
+    const normalized = normalizeArenaRoomCode(code);
+    if (!normalized) {
+      setError(`Enter the ${ARENA_ROOM_CODE_LENGTH}-character room code.`);
       return;
     }
     router.push(`/watch/${normalized}`);
@@ -30,7 +31,7 @@ export function WatchLobby() {
         <h1>Watch the work before you know who made it.</h1>
         <p>Enter a live room code. Spectators can see the prompt, clocks and anonymous voting stage, but cannot submit or vote.</p>
         <div className="watch-code-entry">
-          <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={5} placeholder="ABCDE" aria-label="Live room code" />
+          <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={ARENA_ROOM_CODE_LENGTH} placeholder="ABCD2345" aria-label="Live room code" />
           <button className="button button-primary" onClick={watch}>Watch live <ArrowRight size={18} /></button>
         </div>
         {error && <p className="arena-error">{error}</p>}

@@ -21,6 +21,12 @@ import {
   type TeamId,
   type TimerPreset,
 } from "../../../arena/match-config";
+import { publicArenaIdentity, type ArenaPublicIdentity } from "../../../arena/public-identity";
+import {
+  ARENA_ROOM_CODE_ALPHABET,
+  ARENA_ROOM_CODE_LENGTH,
+  normalizeArenaRoomCode,
+} from "../../../arena/room-code";
 
 type RoomRow = {
   id: number;
@@ -142,10 +148,9 @@ export async function GET(request: Request) {
   try {
     const code = normalizeCode(new URL(request.url).searchParams.get("code"));
     if (!code) return Response.json({ error: "Room code required" }, { status: 400 });
-    const room = await getRoom(code);
-    if (!room) return Response.json({ error: "Room not found" }, { status: 404 });
-    await reconcileArenaRoom(room.id);
-    return Response.json(await roomState(code, user.email));
+    const response = Response.json(await roomState(code, user.email));
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (error) {
     return jsonError(error);
   }
@@ -156,24 +161,36 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
 
   try {
-    const payload = (await request.json()) as Record<string, unknown>;
+    const payload = await readPayload(request);
     const action = cleanText(payload.action, 30);
+    await enforceRateLimit("action", user.email, 120, 60_000);
 
     if (action === "create") {
-      const profile = await getOwnedProfile(user.email);
+      await enforceRateLimit("create", user.email, 10, 60 * 60_000);
+      const identity = requireArenaIdentity(await getOwnedProfile(user.email));
       for (let attempt = 0; attempt < 6; attempt += 1) {
         const code = makeRoomCode();
         const existing = await getRoom(code);
         if (existing) continue;
 
-        await db()
-          .prepare("INSERT INTO arena_rooms (code, host_email) VALUES (?, ?)")
-          .bind(code, user.email)
-          .run();
-        const room = await getRoom(code);
-        if (!room) throw new Error("Unable to create room");
-        await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "", "");
-        return Response.json({ code });
+        try {
+          await db().batch([
+            db().prepare("INSERT INTO arena_rooms (code, host_email) VALUES (?, ?)").bind(code, user.email),
+            db()
+              .prepare(
+                `INSERT INTO arena_players
+                  (room_id, user_email, profile_id, display_name, profile_handle, team)
+                 SELECT id, ?, ?, ?, ?, '' FROM arena_rooms WHERE code = ?`,
+              )
+              .bind(user.email, identity.profileId, identity.displayName, identity.profileHandle, code),
+          ]);
+          return Response.json({ code });
+        } catch (error) {
+          const allocated = await getRoom(code);
+          if (allocated?.hostEmail === user.email) return Response.json({ code });
+          if (allocated) continue;
+          throw error;
+        }
       }
       throw new Error("Unable to allocate a room code");
     }
@@ -191,9 +208,10 @@ export async function POST(request: Request) {
       }
       const count = await playerCount(room.id);
       if (count >= room.maxPlayers) return Response.json({ error: "That room is full." }, { status: 409 });
-      const profile = await getOwnedProfile(user.email);
+      const identity = requireArenaIdentity(await getOwnedProfile(user.email));
       const team = room.matchFormat === "TEAMS" ? await smallerTeam(room.id) : "";
-      await addPlayer(room.id, user.email, profile?.displayName || user.displayName, profile?.handle || "", team);
+      await addPlayer(room.id, user.email, identity, team);
+      await ensureActiveHost(room.id);
       return Response.json({ code });
     }
 
@@ -207,6 +225,41 @@ export async function POST(request: Request) {
       .prepare("UPDATE arena_players SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?")
       .bind(me.id)
       .run();
+    await ensureResponsiveHost(room.id);
+    room = (await getRoom(code)) ?? room;
+
+    if (action === "heartbeat") {
+      return Response.json({ ok: true });
+    }
+
+    if (action === "leave") {
+      await db().batch([
+        db()
+          .prepare(
+            `UPDATE arena_players
+             SET active = 0, left_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND active = 1`,
+          )
+          .bind(me.id),
+        db()
+          .prepare(
+            `UPDATE arena_rooms
+             SET host_email = COALESCE(
+               (SELECT user_email FROM arena_players
+                WHERE room_id = ? AND active = 1
+                  AND last_seen_at >= datetime('now', '-150 seconds')
+                  AND EXISTS (
+                    SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
+                  )
+                ORDER BY joined_at ASC, id ASC LIMIT 1),
+               host_email
+             ), updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND host_email = ?`,
+          )
+          .bind(room.id, room.id, user.email),
+      ]);
+      return Response.json({ ok: true });
+    }
 
     if (action === "rematch") {
       requireHost(room, user.email);
@@ -214,22 +267,20 @@ export async function POST(request: Request) {
         return Response.json({ error: "Finish the current match before starting a rematch." }, { status: 409 });
       }
       const nextMatch = room.matchNumber + 1;
-      await db()
-        .prepare(
+      const teamStatements = await matchTeamStatements(room.id, room.matchFormat, nextMatch);
+      await db().batch([
+        db()
+          .prepare(
           `UPDATE arena_rooms
            SET phase = 'lobby', round_number = 0, match_status = 'setup',
              match_number = ?, signal_score = 0, static_score = 0,
              updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-        )
-        .bind(nextMatch, room.id)
-        .run();
-      await db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id).run();
-      if (room.matchFormat === "TEAMS") {
-        await rebalanceTeams(room.id, nextMatch);
-      } else {
-        await db().prepare("UPDATE arena_players SET team = '' WHERE room_id = ?").bind(room.id).run();
-      }
+           WHERE id = ? AND phase = 'results' AND match_status = 'finished'`,
+          )
+          .bind(nextMatch, room.id),
+        db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id),
+        ...teamStatements,
+      ]);
       return Response.json({ ok: true, matchNumber: nextMatch });
     }
 
@@ -248,50 +299,60 @@ export async function POST(request: Request) {
       let matchLength = room.matchLength as MatchLength;
       let matchFormat = room.matchFormat;
       let rotationMode = room.rotationMode;
-      let timerPreset = room.timerPreset;
       let answerSeconds = room.answerSeconds;
-      let voteSeconds = room.voteSeconds;
 
-      if (room.roundNumber === 0 && room.matchStatus === "setup") {
-        const requestedLength = Number(payload.matchLength);
-        const requestedFormat = cleanText(payload.matchFormat, 12).toUpperCase();
-        const requestedRotation = cleanText(payload.rotationMode, 12).toUpperCase();
-        const requestedTimer = cleanText(payload.timerPreset, 12).toUpperCase();
-        if (!isMatchLength(requestedLength)) {
-          return Response.json({ error: "Choose a 3- or 5-round match." }, { status: 400 });
+      if (room.roundNumber === 0) {
+        if (room.matchStatus === "setup") {
+          const requestedLength = Number(payload.matchLength);
+          const requestedFormat = cleanText(payload.matchFormat, 12).toUpperCase();
+          const requestedRotation = cleanText(payload.rotationMode, 12).toUpperCase();
+          const requestedTimer = cleanText(payload.timerPreset, 12).toUpperCase();
+          if (!isMatchLength(requestedLength)) {
+            return Response.json({ error: "Choose a 3- or 5-round match." }, { status: 400 });
+          }
+          if (!isMatchFormat(requestedFormat)) {
+            return Response.json({ error: "Choose solo or team format." }, { status: 400 });
+          }
+          if (!isRotationMode(requestedRotation)) {
+            return Response.json({ error: "Choose automatic or host-picked game rotation." }, { status: 400 });
+          }
+          if (!isTimerPreset(requestedTimer)) {
+            return Response.json({ error: "Choose a valid round timer." }, { status: 400 });
+          }
+          const timer = getTimerPreset(requestedTimer);
+          await db()
+            .prepare(
+              `UPDATE arena_rooms
+               SET match_length = ?, match_format = ?, rotation_mode = ?,
+                 timer_preset = ?, answer_seconds = ?, vote_seconds = ?,
+                 match_status = 'active', signal_score = 0, static_score = 0,
+                 updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND round_number = 0 AND match_status = 'setup'`,
+            )
+            .bind(
+              requestedLength,
+              requestedFormat,
+              requestedRotation,
+              requestedTimer,
+              timer.answerSeconds,
+              timer.voteSeconds,
+              room.id,
+            )
+            .run();
         }
-        if (!isMatchFormat(requestedFormat)) {
-          return Response.json({ error: "Choose solo or team format." }, { status: 400 });
-        }
-        if (!isRotationMode(requestedRotation)) {
-          return Response.json({ error: "Choose automatic or host-picked game rotation." }, { status: 400 });
-        }
-        if (!isTimerPreset(requestedTimer)) {
-          return Response.json({ error: "Choose a valid round timer." }, { status: 400 });
-        }
-        const timer = getTimerPreset(requestedTimer);
-        matchLength = requestedLength;
-        matchFormat = requestedFormat;
-        rotationMode = requestedRotation;
-        timerPreset = requestedTimer;
-        answerSeconds = timer.answerSeconds;
-        voteSeconds = timer.voteSeconds;
-        await db()
-          .prepare(
-            `UPDATE arena_rooms
-             SET match_length = ?, match_format = ?, rotation_mode = ?,
-               timer_preset = ?, answer_seconds = ?, vote_seconds = ?,
-               match_status = 'active', signal_score = 0, static_score = 0,
-               updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?`,
-          )
-          .bind(matchLength, matchFormat, rotationMode, timerPreset, answerSeconds, voteSeconds, room.id)
-          .run();
-        await db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id).run();
-        if (matchFormat === "TEAMS") {
-          await rebalanceTeams(room.id, room.matchNumber);
-        } else {
-          await db().prepare("UPDATE arena_players SET team = '' WHERE room_id = ?").bind(room.id).run();
+
+        const configured = await getRoom(code);
+        if (!configured) throw new Error("Unable to load configured room");
+        matchLength = configured.matchLength as MatchLength;
+        matchFormat = configured.matchFormat;
+        rotationMode = configured.rotationMode;
+        answerSeconds = configured.answerSeconds;
+        if (configured.roundNumber === 0) {
+          const teamStatements = await matchTeamStatements(room.id, matchFormat, room.matchNumber);
+          await db().batch([
+            db().prepare("UPDATE arena_players SET score = 0 WHERE room_id = ?").bind(room.id),
+            ...teamStatements,
+          ]);
         }
       }
 
@@ -308,23 +369,27 @@ export async function POST(request: Request) {
       const prompt = choosePrompt(mode, room.id, room.matchNumber, roundNumber);
       const answerDeadline = deadlineAfter(answerSeconds);
 
-      await db()
-        .prepare(
-          `INSERT INTO arena_rounds
+      await db().batch([
+        db()
+          .prepare(
+          `INSERT OR IGNORE INTO arena_rounds
             (room_id, match_number, round_number, prompt, mode, answer_deadline_at)
            VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(room.id, room.matchNumber, roundNumber, prompt, mode, answerDeadline)
-        .run();
-      await db()
-        .prepare(
+          )
+          .bind(room.id, room.matchNumber, roundNumber, prompt, mode, answerDeadline),
+        db()
+          .prepare(
           `UPDATE arena_rooms
            SET phase = 'answering', round_number = ?, match_status = 'active',
              updated_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-        )
-        .bind(roundNumber, room.id)
-        .run();
+           WHERE id = ? AND phase IN ('lobby', 'results')
+             AND EXISTS (
+               SELECT 1 FROM arena_rounds
+               WHERE room_id = ? AND match_number = ? AND round_number = ? AND status = 'answering'
+             )`,
+          )
+          .bind(roundNumber, room.id, room.id, room.matchNumber, roundNumber),
+      ]);
       return Response.json({ ok: true, mode, answerDeadline });
     }
 
@@ -338,15 +403,21 @@ export async function POST(request: Request) {
       const mode = getGameMode(round.mode);
       const content = cleanText(payload.content, mode?.maxChars ?? 280);
       if (content.length < 2) return Response.json({ error: "Give the room something to vote on." }, { status: 400 });
-      await db()
+      const result = await db()
         .prepare(
           `INSERT INTO arena_submissions (round_id, player_id, content)
-           VALUES (?, ?, ?)
+           SELECT ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM arena_rounds WHERE id = ? AND status = 'answering'
+           )
            ON CONFLICT(round_id, player_id)
            DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
         )
-        .bind(round.id, me.id, content)
+        .bind(round.id, me.id, content, round.id)
         .run();
+      if (Number(result.meta?.changes || 0) < 1) {
+        return Response.json({ error: "Submissions are closed." }, { status: 409 });
+      }
       return Response.json({ ok: true });
     }
 
@@ -356,18 +427,27 @@ export async function POST(request: Request) {
       const submissions = await submissionCount(round.id);
       if (submissions < 2) return Response.json({ error: "Need at least two entries before voting." }, { status: 409 });
       const voteDeadline = deadlineAfter(room.voteSeconds);
-      await db()
-        .prepare(
-          `UPDATE arena_rounds
-           SET status = 'voting', voting_opened_at = CURRENT_TIMESTAMP, vote_deadline_at = ?
-           WHERE id = ? AND status = 'answering'`,
-        )
-        .bind(voteDeadline, round.id)
-        .run();
-      await db()
-        .prepare("UPDATE arena_rooms SET phase = 'voting', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(room.id)
-        .run();
+      const [opened] = await db().batch([
+        db()
+          .prepare(
+            `UPDATE arena_rounds
+             SET status = 'voting', voting_opened_at = CURRENT_TIMESTAMP, vote_deadline_at = ?
+             WHERE id = ? AND status = 'answering'`,
+          )
+          .bind(voteDeadline, round.id),
+        db()
+          .prepare(
+            `UPDATE arena_rooms
+             SET phase = 'voting', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND EXISTS (
+               SELECT 1 FROM arena_rounds WHERE id = ? AND status = 'voting'
+             )`,
+          )
+          .bind(room.id, round.id),
+      ]);
+      if (Number(opened.meta?.changes || 0) < 1) {
+        return Response.json({ error: "Voting has already opened." }, { status: 409 });
+      }
       return Response.json({ ok: true, voteDeadline });
     }
 
@@ -381,15 +461,21 @@ export async function POST(request: Request) {
         .first<{ id: number; playerId: number }>();
       if (!submission) return Response.json({ error: "Entry not found." }, { status: 404 });
       if (submission.playerId === me.id) return Response.json({ error: "You cannot vote for your own entry." }, { status: 400 });
-      await db()
+      const result = await db()
         .prepare(
           `INSERT INTO arena_votes (round_id, voter_player_id, submission_id)
-           VALUES (?, ?, ?)
+           SELECT ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM arena_rounds WHERE id = ? AND status = 'voting'
+           )
            ON CONFLICT(round_id, voter_player_id)
            DO UPDATE SET submission_id = excluded.submission_id, created_at = CURRENT_TIMESTAMP`,
         )
-        .bind(round.id, me.id, submissionId)
+        .bind(round.id, me.id, submissionId, round.id)
         .run();
+      if (Number(result.meta?.changes || 0) < 1) {
+        return Response.json({ error: "Voting has closed." }, { status: 409 });
+      }
       return Response.json({ ok: true });
     }
 
@@ -446,15 +532,15 @@ async function roomState(code: string, email: string) {
   room = (await getRoom(code)) ?? room;
 
   const me = await getPlayer(room.id, email);
-  if (me) {
-    await db().prepare("UPDATE arena_players SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?").bind(me.id).run();
-  }
 
   const playersResult = await db()
     .prepare(
-      `SELECT id, display_name AS displayName, profile_handle AS profileHandle,
-        score, team
-       FROM arena_players WHERE room_id = ? ORDER BY score DESC, joined_at ASC`,
+      `SELECT p.id, pr.display_name AS displayName, pr.handle AS profileHandle,
+        p.score, p.team
+       FROM arena_players p
+       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       WHERE p.room_id = ? AND p.active = 1
+       ORDER BY p.score DESC, p.joined_at ASC`,
     )
     .bind(room.id)
     .all<PlayerRow>();
@@ -596,21 +682,92 @@ async function getRoom(code: string) {
 async function getPlayer(roomId: number, email: string) {
   return db()
     .prepare(
-      `SELECT id, display_name AS displayName, profile_handle AS profileHandle,
-        score, team
-       FROM arena_players WHERE room_id = ? AND user_email = ? LIMIT 1`,
+      `SELECT p.id, pr.display_name AS displayName, pr.handle AS profileHandle,
+        p.score, p.team
+       FROM arena_players p
+       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       WHERE p.room_id = ? AND p.user_email = ? AND p.active = 1 LIMIT 1`,
     )
     .bind(roomId, email)
     .first<PlayerRow>();
 }
 
-async function addPlayer(roomId: number, email: string, displayName: string, handle: string, team: string) {
+async function addPlayer(roomId: number, email: string, identity: ArenaPublicIdentity, team: string) {
   await db()
     .prepare(
-      `INSERT INTO arena_players (room_id, user_email, display_name, profile_handle, team)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO arena_players
+        (room_id, user_email, profile_id, display_name, profile_handle, team, active, left_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, NULL)
+       ON CONFLICT(room_id, user_email) DO UPDATE SET
+         profile_id = excluded.profile_id,
+         display_name = excluded.display_name,
+         profile_handle = excluded.profile_handle,
+         team = excluded.team,
+         active = 1,
+         left_at = NULL,
+         last_seen_at = CURRENT_TIMESTAMP`,
     )
-    .bind(roomId, email, displayName.slice(0, 70), handle.slice(0, 30), team)
+    .bind(roomId, email, identity.profileId, identity.displayName, identity.profileHandle, team)
+    .run();
+}
+
+async function ensureActiveHost(roomId: number) {
+  await db()
+    .prepare(
+      `UPDATE arena_rooms
+       SET host_email = (
+         SELECT user_email FROM arena_players
+         WHERE room_id = ? AND active = 1
+           AND last_seen_at >= datetime('now', '-150 seconds')
+           AND EXISTS (
+             SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
+           )
+         ORDER BY joined_at ASC, id ASC LIMIT 1
+       ), updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND NOT EXISTS (
+         SELECT 1 FROM arena_players
+         WHERE room_id = ? AND user_email = arena_rooms.host_email AND active = 1
+           AND EXISTS (
+             SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
+           )
+       )`,
+    )
+    .bind(roomId, roomId, roomId)
+    .run();
+}
+
+async function ensureResponsiveHost(roomId: number) {
+  await db()
+    .prepare(
+      `UPDATE arena_rooms
+       SET host_email = (
+         SELECT user_email FROM arena_players
+         WHERE room_id = ? AND active = 1
+           AND last_seen_at >= datetime('now', '-150 seconds')
+           AND EXISTS (
+             SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
+           )
+         ORDER BY joined_at ASC, id ASC LIMIT 1
+       ), updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+         AND EXISTS (
+           SELECT 1 FROM arena_players
+           WHERE room_id = ? AND active = 1
+             AND last_seen_at >= datetime('now', '-150 seconds')
+             AND EXISTS (
+               SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
+             )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM arena_players
+           WHERE room_id = ? AND user_email = arena_rooms.host_email AND active = 1
+             AND last_seen_at >= datetime('now', '-150 seconds')
+             AND EXISTS (
+               SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
+             )
+         )`,
+    )
+    .bind(roomId, roomId, roomId, roomId)
     .run();
 }
 
@@ -632,13 +789,15 @@ async function submissionRows(roundId: number) {
   const result = await db()
     .prepare(
       `SELECT s.id, s.player_id AS playerId, s.content,
-        p.display_name AS authorName, p.profile_handle AS profileHandle,
+        COALESCE(NULLIF(pr.display_name, ''), 'FACEBACK Creator') AS authorName,
+        CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.team AS team, COUNT(v.id) AS voteCount
        FROM arena_submissions s
        JOIN arena_players p ON p.id = s.player_id
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
        LEFT JOIN arena_votes v ON v.submission_id = s.id
        WHERE s.round_id = ?
-       GROUP BY s.id, s.player_id, s.content, p.display_name, p.profile_handle, p.team
+       GROUP BY s.id, s.player_id, s.content, pr.display_name, pr.handle, pr.published, p.team
        ORDER BY s.id ASC`,
     )
     .bind(roundId)
@@ -672,7 +831,12 @@ async function roundHistory(roomId: number, matchNumber: number) {
 
 async function playerCount(roomId: number) {
   const row = await db()
-    .prepare("SELECT COUNT(*) AS count FROM arena_players WHERE room_id = ?")
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM arena_players p
+       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       WHERE p.room_id = ? AND p.active = 1`,
+    )
     .bind(roomId)
     .first<{ count: number }>();
   return Number(row?.count || 0);
@@ -698,7 +862,9 @@ async function smallerTeam(roomId: number): Promise<TeamId> {
   const rows = await db()
     .prepare(
       `SELECT team, COUNT(*) AS count FROM arena_players
-       WHERE room_id = ? AND team IN (?, ?) GROUP BY team`,
+       WHERE room_id = ? AND active = 1 AND team IN (?, ?)
+         AND EXISTS (SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1)
+       GROUP BY team`,
     )
     .bind(roomId, TEAM_SIGNAL, TEAM_STATIC)
     .all<{ team: string; count: number }>();
@@ -707,15 +873,23 @@ async function smallerTeam(roomId: number): Promise<TeamId> {
   return signal <= statik ? TEAM_SIGNAL : TEAM_STATIC;
 }
 
-async function rebalanceTeams(roomId: number, matchNumber: number) {
+async function matchTeamStatements(roomId: number, matchFormat: MatchFormat, matchNumber: number) {
+  const clear = db().prepare("UPDATE arena_players SET team = '' WHERE room_id = ?").bind(roomId);
+  if (matchFormat !== "TEAMS") return [clear];
+
   const players = await db()
-    .prepare("SELECT id FROM arena_players WHERE room_id = ? ORDER BY joined_at ASC, id ASC")
+    .prepare(
+      `SELECT id FROM arena_players
+       WHERE room_id = ? AND active = 1
+         AND EXISTS (SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1)
+       ORDER BY joined_at ASC, id ASC`,
+    )
     .bind(roomId)
     .all<{ id: number }>();
-  for (let index = 0; index < players.results.length; index += 1) {
+  return [clear, ...players.results.map((player, index) => {
     const team = (index + matchNumber - 1) % 2 === 0 ? TEAM_SIGNAL : TEAM_STATIC;
-    await db().prepare("UPDATE arena_players SET team = ? WHERE id = ?").bind(team, players.results[index].id).run();
-  }
+    return db().prepare("UPDATE arena_players SET team = ? WHERE id = ?").bind(team, player.id);
+  })];
 }
 
 function winnerPlayerIds(rows: SubmissionRow[]) {
@@ -729,15 +903,16 @@ function requireHost(room: RoomRow, email: string) {
 }
 
 function normalizeCode(value: unknown) {
-  const code = cleanText(value, 8).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return /^[A-Z0-9]{5}$/.test(code) ? code : "";
+  return normalizeArenaRoomCode(value);
 }
 
 function makeRoomCode() {
-  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const bytes = new Uint8Array(5);
+  const bytes = new Uint8Array(ARENA_ROOM_CODE_LENGTH);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join("");
+  return Array.from(
+    bytes,
+    (value) => ARENA_ROOM_CODE_ALPHABET[value % ARENA_ROOM_CODE_ALPHABET.length],
+  ).join("");
 }
 
 function resolveMode(value: string, roomId: number, matchNumber: number, roundNumber: number): GameModeId | null {
@@ -757,6 +932,66 @@ function choosePrompt(mode: GameModeId, roomId: number, matchNumber: number, rou
   return bank[(roomId * 11 + matchNumber * 5 + roundNumber * 13) % bank.length];
 }
 
+async function readPayload(request: Request) {
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (declaredLength > 16_384) throw new HttpError("Arena request is too large.", 413);
+
+  const text = await request.text();
+  if (text.length > 16_384) throw new HttpError("Arena request is too large.", 413);
+
+  try {
+    const value = JSON.parse(text) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("not an object");
+    }
+    return value as Record<string, unknown>;
+  } catch {
+    throw new HttpError("Send a valid JSON request.", 400);
+  }
+}
+
+function requireArenaIdentity(profile: Awaited<ReturnType<typeof getOwnedProfile>>) {
+  const identity = publicArenaIdentity(profile);
+  if (!identity) {
+    throw new HttpError("Create and publish your FACEBACK profile before entering the Arena.", 409);
+  }
+  return identity;
+}
+
+async function enforceRateLimit(
+  scope: string,
+  actorKey: string,
+  limit: number,
+  windowMs: number,
+) {
+  const bucket = Math.floor(Date.now() / windowMs);
+  await db().batch([
+    db()
+      .prepare(
+        `INSERT INTO arena_action_limits (scope, actor_key, bucket, request_count)
+         VALUES (?, ?, ?, 1)
+         ON CONFLICT(scope, actor_key, bucket) DO UPDATE SET
+           request_count = request_count + 1,
+           updated_at = CURRENT_TIMESTAMP`,
+      )
+      .bind(scope, actorKey, bucket),
+    db()
+      .prepare("DELETE FROM arena_action_limits WHERE scope = ? AND actor_key = ? AND bucket < ?")
+      .bind(scope, actorKey, bucket - 1440),
+  ]);
+  const row = await db()
+    .prepare(
+      `SELECT request_count AS requestCount
+       FROM arena_action_limits
+       WHERE scope = ? AND actor_key = ? AND bucket = ? LIMIT 1`,
+    )
+    .bind(scope, actorKey, bucket)
+    .first<{ requestCount: number }>();
+  if (Number(row?.requestCount || 0) > limit) {
+    throw new HttpError("Too many Arena requests. Take a breath and try again shortly.", 429);
+  }
+}
+
 class HttpError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -765,8 +1000,6 @@ class HttpError extends Error {
 
 function jsonError(error: unknown) {
   if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
-  return Response.json(
-    { error: error instanceof Error ? error.message : "Arena request failed" },
-    { status: 500 },
-  );
+  console.error("Arena request failed", error);
+  return Response.json({ error: "Arena request failed. Please try again." }, { status: 500 });
 }

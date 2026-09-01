@@ -1,5 +1,6 @@
 import { db } from "../../_shared";
 import { reconcileArenaRoom } from "../_live";
+import { normalizeArenaRoomCode } from "../../../arena/room-code";
 
 type PublicRoom = {
   id: number;
@@ -112,7 +113,7 @@ export async function GET(request: Request) {
       }
     }
 
-    return Response.json({
+    const response = Response.json({
       serverNow: new Date().toISOString(),
       room: {
         code: room.code,
@@ -140,11 +141,11 @@ export async function GET(request: Request) {
       winners,
       counts: { players: players.length, ...counts },
     });
+    response.headers.set("Cache-Control", "public, max-age=0, no-store");
+    return response;
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load live Arena room" },
-      { status: 500 },
-    );
+    console.error("Unable to load live Arena room", error);
+    return Response.json({ error: "Unable to load live Arena room" }, { status: 500 });
   }
 }
 
@@ -179,9 +180,12 @@ async function currentRound(room: PublicRoom) {
 async function playerRows(roomId: number) {
   const result = await db()
     .prepare(
-      `SELECT id, display_name AS displayName, profile_handle AS profileHandle,
-        score, team
-       FROM arena_players WHERE room_id = ? ORDER BY score DESC, joined_at ASC`,
+      `SELECT p.id, pr.display_name AS displayName, pr.handle AS profileHandle,
+        p.score, p.team
+       FROM arena_players p
+       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       WHERE p.room_id = ? AND p.active = 1
+       ORDER BY p.score DESC, p.joined_at ASC`,
     )
     .bind(roomId)
     .all<PublicPlayer>();
@@ -192,13 +196,15 @@ async function submissionRows(roundId: number) {
   const result = await db()
     .prepare(
       `SELECT s.id, s.player_id AS playerId, s.content,
-        p.display_name AS author, p.profile_handle AS profileHandle,
+        COALESCE(NULLIF(pr.display_name, ''), 'FACEBACK Creator') AS author,
+        CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.team AS team, COUNT(v.id) AS voteCount
        FROM arena_submissions s
        JOIN arena_players p ON p.id = s.player_id
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
        LEFT JOIN arena_votes v ON v.submission_id = s.id
        WHERE s.round_id = ?
-       GROUP BY s.id, s.player_id, s.content, p.display_name, p.profile_handle, p.team
+       GROUP BY s.id, s.player_id, s.content, pr.display_name, pr.handle, pr.published, p.team
        ORDER BY s.id ASC`,
     )
     .bind(roundId)
@@ -231,6 +237,5 @@ async function roundHistory(roomId: number, matchNumber: number) {
 }
 
 function normalizeCode(value: string | null) {
-  const code = (value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-  return /^[A-Z0-9]{5}$/.test(code) ? code : "";
+  return normalizeArenaRoomCode(value);
 }

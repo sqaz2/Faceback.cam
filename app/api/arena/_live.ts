@@ -37,26 +37,43 @@ export async function reconcileArenaRoom(roomId: number) {
   const round = await getLiveRound(room.id, room.matchNumber, room.roundNumber);
   if (!round) return;
 
+  if (room.phase === "answering" && round.status === "voting") {
+    await db()
+      .prepare("UPDATE arena_rooms SET phase = 'voting', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND phase = 'answering'")
+      .bind(room.id)
+      .run();
+    return;
+  }
+
   if (room.phase === "answering" && round.status === "answering" && isPast(round.answerDeadlineAt)) {
     const submissions = await countRows("arena_submissions", "round_id", round.id);
     if (submissions >= 2) {
       const voteDeadline = deadlineAfter(room.voteSeconds);
-      const result = await db()
-        .prepare(
-          `UPDATE arena_rounds
-           SET status = 'voting', voting_opened_at = COALESCE(voting_opened_at, CURRENT_TIMESTAMP),
-             vote_deadline_at = ?
-           WHERE id = ? AND status = 'answering'`,
-        )
-        .bind(voteDeadline, round.id)
-        .run();
-      if (Number(result.meta?.changes || 0) > 0) {
-        await db()
-          .prepare("UPDATE arena_rooms SET phase = 'voting', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-          .bind(room.id)
-          .run();
-      }
+      await db().batch([
+        db()
+          .prepare(
+            `UPDATE arena_rounds
+             SET status = 'voting', voting_opened_at = COALESCE(voting_opened_at, CURRENT_TIMESTAMP),
+               vote_deadline_at = ?
+             WHERE id = ? AND status = 'answering'`,
+          )
+          .bind(voteDeadline, round.id),
+        db()
+          .prepare(
+            `UPDATE arena_rooms
+             SET phase = 'voting', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND EXISTS (
+               SELECT 1 FROM arena_rounds WHERE id = ? AND status = 'voting'
+             )`,
+          )
+          .bind(room.id, round.id),
+      ]);
     }
+    return;
+  }
+
+  if (room.phase === "voting" && round.status === "revealing") {
+    await revealArenaRound(room.id, round.id);
     return;
   }
 
@@ -70,60 +87,106 @@ export async function revealArenaRound(roomId: number, roundId: number) {
   const room = await getLiveRoom(roomId);
   if (!room || room.phase !== "voting") return { revealed: false, reason: "not-voting" } as const;
 
-  const rows = await voteRows(roundId);
-  const totalVotes = rows.reduce((sum, entry) => sum + Number(entry.voteCount || 0), 0);
-  if (totalVotes < 1) return { revealed: false, reason: "no-votes" } as const;
-
   const claim = await db()
-    .prepare("UPDATE arena_rounds SET status = 'revealing' WHERE id = ? AND status = 'voting'")
-    .bind(roundId)
+    .prepare(
+      `UPDATE arena_rounds
+       SET status = 'revealing'
+       WHERE id = ? AND room_id = ? AND status = 'voting'
+         AND EXISTS (SELECT 1 FROM arena_votes WHERE round_id = ?)`,
+    )
+    .bind(roundId, roomId, roundId)
     .run();
   if (Number(claim.meta?.changes || 0) < 1) {
-    return { revealed: false, reason: "already-revealing" } as const;
+    const current = await db()
+      .prepare("SELECT status FROM arena_rounds WHERE id = ? AND room_id = ? LIMIT 1")
+      .bind(roundId, roomId)
+      .first<{ status: string }>();
+    if (current?.status === "results") {
+      return { revealed: false, reason: "already-revealed" } as const;
+    }
+    if (current?.status !== "revealing") {
+      return { revealed: false, reason: current?.status === "voting" ? "no-votes" : "not-voting" } as const;
+    }
   }
 
-  try {
-    const top = Math.max(...rows.map((entry) => Number(entry.voteCount || 0)));
-    const winnerRows = rows.filter((entry) => Number(entry.voteCount || 0) === top);
-    const winnerIds = [...new Set(winnerRows.map((entry) => entry.playerId))];
-    for (const playerId of winnerIds) {
-      await db().prepare("UPDATE arena_players SET score = score + 1 WHERE id = ?").bind(playerId).run();
-    }
-
-    const teams = room.matchFormat === "TEAMS"
-      ? [...new Set(winnerRows.map((entry) => entry.team).filter(isTeamId))]
-      : [];
-    const signalGain = teams.includes(TEAM_SIGNAL) ? 1 : 0;
-    const staticGain = teams.includes(TEAM_STATIC) ? 1 : 0;
-    const winningTeam = teams.length === 1 ? teams[0] : teams.length > 1 ? "TIE" : "";
-    const isFinalRound = room.roundNumber >= room.matchLength;
-
-    await db()
-      .prepare(
-        `UPDATE arena_rounds
-         SET status = 'results', winning_team = ?, revealed_at = CURRENT_TIMESTAMP
-         WHERE id = ? AND status = 'revealing'`,
-      )
-      .bind(winningTeam, roundId)
-      .run();
-    await db()
-      .prepare(
-        `UPDATE arena_rooms
-         SET phase = 'results', signal_score = signal_score + ?,
-           static_score = static_score + ?, match_status = ?, updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-      )
-      .bind(signalGain, staticGain, isFinalRound ? "finished" : "active", room.id)
-      .run();
-
-    return { revealed: true, matchFinished: isFinalRound } as const;
-  } catch (error) {
+  const rows = await voteRows(roundId);
+  const totalVotes = rows.reduce((sum, entry) => sum + Number(entry.voteCount || 0), 0);
+  if (totalVotes < 1) {
     await db()
       .prepare("UPDATE arena_rounds SET status = 'voting' WHERE id = ? AND status = 'revealing'")
       .bind(roundId)
       .run();
-    throw error;
+    return { revealed: false, reason: "no-votes" } as const;
   }
+
+  const top = Math.max(...rows.map((entry) => Number(entry.voteCount || 0)));
+  const winnerRows = rows.filter((entry) => Number(entry.voteCount || 0) === top);
+  const winnerIds = [...new Set(winnerRows.map((entry) => entry.playerId))];
+  const teams = room.matchFormat === "TEAMS"
+    ? [...new Set(winnerRows.map((entry) => entry.team).filter(isTeamId))]
+    : [];
+  const winningTeam = teams.length === 1 ? teams[0] : teams.length > 1 ? "TIE" : "";
+  const isFinalRound = room.roundNumber >= room.matchLength;
+  const awardStatements = winnerIds.map((playerId) =>
+    db()
+      .prepare("INSERT OR IGNORE INTO arena_round_awards (round_id, player_id) VALUES (?, ?)")
+      .bind(roundId, playerId),
+  );
+
+  await db().batch([
+    db().prepare("DELETE FROM arena_round_awards WHERE round_id = ?").bind(roundId),
+    ...awardStatements,
+    db()
+      .prepare(
+        `UPDATE arena_rounds
+         SET status = 'results', winning_team = ?, revealed_at = COALESCE(revealed_at, CURRENT_TIMESTAMP)
+         WHERE id = ? AND status = 'revealing'`,
+      )
+      .bind(winningTeam, roundId),
+    db()
+      .prepare(
+        `UPDATE arena_players
+         SET score = (
+           SELECT COUNT(*)
+           FROM arena_round_awards awards
+           JOIN arena_rounds rounds ON rounds.id = awards.round_id
+           WHERE awards.player_id = arena_players.id
+             AND rounds.room_id = ? AND rounds.match_number = ?
+         )
+         WHERE room_id = ?`,
+      )
+      .bind(room.id, room.matchNumber, room.id),
+    db()
+      .prepare(
+        `UPDATE arena_rooms
+         SET phase = 'results',
+           signal_score = (
+             SELECT COUNT(*) FROM arena_rounds
+             WHERE room_id = ? AND match_number = ? AND status = 'results'
+               AND winning_team IN ('SIGNAL', 'TIE')
+           ),
+           static_score = (
+             SELECT COUNT(*) FROM arena_rounds
+             WHERE room_id = ? AND match_number = ? AND status = 'results'
+               AND winning_team IN ('STATIC', 'TIE')
+           ),
+           match_status = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND EXISTS (
+           SELECT 1 FROM arena_rounds WHERE id = ? AND status = 'results'
+         )`,
+      )
+      .bind(
+        room.id,
+        room.matchNumber,
+        room.id,
+        room.matchNumber,
+        isFinalRound ? "finished" : "active",
+        room.id,
+        roundId,
+      ),
+  ]);
+
+  return { revealed: true, matchFinished: isFinalRound } as const;
 }
 
 async function getLiveRoom(roomId: number) {

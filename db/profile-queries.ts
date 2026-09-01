@@ -95,7 +95,9 @@ export async function getPublicArenaHistory(handle: string): Promise<PublicArena
      JOIN arena_rooms rm ON rm.id = r.room_id
      LEFT JOIN arena_votes v ON v.submission_id = s.id
      LEFT JOIN arena_teachbacks t ON t.round_id = r.id AND t.player_id = p.id
-     WHERE p.profile_handle = ? AND r.status = 'results'
+     WHERE p.profile_id = (
+       SELECT id FROM profiles WHERE handle = ? AND published = 1 LIMIT 1
+     ) AND r.status = 'results'
      GROUP BY r.id, rm.code, r.match_number, r.round_number, r.mode, r.prompt,
        s.id, s.content, r.revealed_at, t.intent, t.move, t.lesson
      ORDER BY r.revealed_at DESC, r.id DESC

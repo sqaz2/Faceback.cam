@@ -84,6 +84,16 @@ export async function POST(request: Request) {
     }
 
     const profile = await getOwnedProfile(user.email);
+    if (profile) {
+      await db()
+        .prepare(
+          `UPDATE arena_players
+           SET profile_id = ?, display_name = ?, profile_handle = ?
+           WHERE user_email = ?`,
+        )
+        .bind(profile.id, profile.displayName, profile.handle, user.email)
+        .run();
+    }
     return Response.json({ profile });
   } catch (error) {
     return Response.json(

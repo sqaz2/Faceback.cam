@@ -14,8 +14,9 @@ FACEBACK.CAM is a creator-home and live creativity platform for people who use A
 - Public cross-platform work inventories
 - Mobile-first creator studio
 - Creative Arena at `/arena`
-  - 5-character invite codes
+  - 8-character invite codes with an ambiguity-free alphabet
   - Up to 8 signed-in creators per room
+  - Published FACEBACK profile required; account emails are never used as public names
   - 3- or 5-round matches
   - Solo ladder or auto-balanced **Team Signal vs Team Static** competition
   - Automatic no-repeat mode rotation or host-picked games
@@ -30,6 +31,7 @@ FACEBACK.CAM is a creator-home and live creativity platform for people who use A
   - Live round counter and match history
   - Final individual standings and team championship result
   - Same-room rematches with a new match number and preserved prior round history
+  - Explicit leave/rejoin flow with automatic host transfer
   - Winner profile link for post-round examination
   - **School the Room** winner teach-back: aim → creative move → reusable principle
   - Tie-safe scoring and teach-backs
@@ -85,17 +87,21 @@ npm run dev
 Production validation:
 
 ```bash
-npm run build
+npx tsc --noEmit
 npm run lint
+npm run build
+npm test
+npm audit --omit=dev --audit-level=high
 ```
 
-The repository also includes `.github/workflows/ci.yml`, which runs dependency install, TypeScript checking and lint on the Arena branch/PR.
+The repository also includes `.github/workflows/ci.yml`, which runs dependency install, TypeScript checking, lint, a production build and the FACEBACK test suite on the Arena branch/PR.
 
-Creator database schema lives in `db/schema.ts`; migrations live in `drizzle/`. The Creative Arena uses additive migrations:
+The creator/profile Drizzle schema lives in `db/schema.ts`. Arena runtime SQL is intentionally migration-managed, with its canonical additive schema and upgrades in `drizzle/`; migration tests apply both a clean install and an upgrade from the pre-integrity Arena schema:
 
 - `0001_creative_arena.sql` — rooms, players, rounds, submissions and votes
 - `0002_arena_teachbacks.sql` — winner breakdowns
 - `0003_arena_matches.sql` — match settings, match numbering, team assignments and team scoring
 - `0004_arena_live_public.sql` — server timers/deadlines plus indexes supporting public Arena history
+- `0005_arena_integrity.sql` — stable profile ownership, active membership, idempotent round awards and action-rate counters
 
-Arena runtime queries are currently raw D1 queries in its API routes.
+Arena runtime queries are raw D1 queries in its API routes. Reveals use a unique award ledger plus score recomputation, so retries cannot increment a winner twice. Authenticated mutations use D1-backed fixed-window limits; public room codes use eight ambiguity-free characters to make spectator-code enumeration impractical.

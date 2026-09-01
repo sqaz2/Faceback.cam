@@ -1,19 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { TIMER_PRESETS, type TimerPreset } from "./match-config";
 
 export function RoundClock({
   deadline,
+  serverNow,
   phase,
   overtimeText,
 }: {
   deadline: string | null | undefined;
+  serverNow: string;
   phase: "CREATE" | "VOTE";
   overtimeText: string;
 }) {
-  const seconds = useCountdown(deadline);
+  const seconds = useCountdown(deadline, serverNow);
   const overtime = Boolean(deadline) && seconds <= 0;
   return (
     <div className={`arena-clock ${overtime ? "arena-clock-overtime" : ""}`}>
@@ -40,17 +42,19 @@ export function TimerPicker({ value, onChange }: { value: TimerPreset; onChange:
   );
 }
 
-function useCountdown(deadline: string | null | undefined) {
-  const calculate = useCallback(() => {
-    if (!deadline) return 0;
-    return Math.max(0, Math.ceil((Date.parse(deadline) - Date.now()) / 1000));
-  }, [deadline]);
-  const [seconds, setSeconds] = useState(calculate);
+function useCountdown(deadline: string | null | undefined, serverNow: string) {
+  const [seconds, setSeconds] = useState(0);
   useEffect(() => {
+    const parsedServerNow = Date.parse(serverNow);
+    const serverOffset = Number.isFinite(parsedServerNow) ? parsedServerNow - Date.now() : 0;
+    const calculate = () => {
+      if (!deadline) return 0;
+      return Math.max(0, Math.ceil((Date.parse(deadline) - (Date.now() + serverOffset)) / 1000));
+    };
     setSeconds(calculate());
     const timer = window.setInterval(() => setSeconds(calculate()), 250);
     return () => window.clearInterval(timer);
-  }, [calculate]);
+  }, [deadline, serverNow]);
   return seconds;
 }
 

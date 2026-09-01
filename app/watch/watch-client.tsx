@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Crown, Eye, Radio, Sparkles, Trophy, Users } from "lucide-react";
+import { ArrowRight, Crown, Eye, Radio, Trophy, Users } from "lucide-react";
 import { getGameMode } from "../arena/game-modes";
 import { TEAM_SIGNAL, TEAM_STATIC, teamLabel } from "../arena/match-config";
 
@@ -58,11 +58,22 @@ export function SpectatorRoom({ code }: { code: string }) {
 
   useEffect(() => {
     let active = true;
-    load().catch((err) => active && setError(err instanceof Error ? err.message : "Unable to watch this room"));
-    const timer = window.setInterval(() => {
-      load().catch((err) => active && setError(err instanceof Error ? err.message : "Unable to refresh this room"));
-    }, 1800);
-    return () => { active = false; window.clearInterval(timer); };
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        await load();
+        if (active) setError("");
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Unable to refresh this room");
+      } finally {
+        if (active) timer = window.setTimeout(poll, 3000);
+      }
+    };
+    void poll();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [load]);
 
   if (!state) {
@@ -116,7 +127,7 @@ export function SpectatorRoom({ code }: { code: string }) {
             <div className="spectator-card">
               <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}/{state.room.matchLength}</span><span>{mode?.name ?? state.round.mode}</span></div>
               <PublicRoundTrack state={state} />
-              <RoundClock deadline={deadline} label="CREATE" waitingText="Overtime · waiting for 2 locked entries" />
+              <RoundClock deadline={deadline} serverNow={state.serverNow} label="CREATE" waitingText="Overtime · waiting for 2 locked entries" />
               {mode && <div className="spectator-mode"><span>{mode.kicker}</span><strong>{mode.name}</strong><small>{mode.criteria.join(" · ")}</small></div>}
               <h1>{state.round.prompt}</h1>
               <div className="spectator-hidden-entries">
@@ -131,7 +142,7 @@ export function SpectatorRoom({ code }: { code: string }) {
             <div className="spectator-card">
               <div className="arena-round-meta"><span>ROUND {state.round.roundNumber}/{state.room.matchLength}</span><span>BLIND VOTE</span></div>
               <PublicRoundTrack state={state} />
-              <RoundClock deadline={deadline} label="VOTE" waitingText="Overtime · waiting for the first vote" />
+              <RoundClock deadline={deadline} serverNow={state.serverNow} label="VOTE" waitingText="Overtime · waiting for the first vote" />
               <h1>{state.round.prompt}</h1>
               <p className="arena-vote-help">You can see the entries now, but not who wrote them. Spectators cannot vote.</p>
               <div className="arena-submissions spectator-submissions">
@@ -185,8 +196,8 @@ export function SpectatorRoom({ code }: { code: string }) {
   );
 }
 
-function RoundClock({ deadline, label, waitingText }: { deadline: string | null | undefined; label: string; waitingText: string }) {
-  const seconds = useCountdown(deadline);
+function RoundClock({ deadline, serverNow, label, waitingText }: { deadline: string | null | undefined; serverNow: string; label: string; waitingText: string }) {
+  const seconds = useCountdown(deadline, serverNow);
   const overtime = Boolean(deadline) && seconds <= 0;
   return (
     <div className={`arena-clock ${overtime ? "arena-clock-overtime" : ""}`}>
@@ -197,17 +208,19 @@ function RoundClock({ deadline, label, waitingText }: { deadline: string | null 
   );
 }
 
-function useCountdown(deadline: string | null | undefined) {
-  const calculate = useCallback(() => {
-    if (!deadline) return 0;
-    return Math.max(0, Math.ceil((Date.parse(deadline) - Date.now()) / 1000));
-  }, [deadline]);
-  const [seconds, setSeconds] = useState(calculate);
+function useCountdown(deadline: string | null | undefined, serverNow: string) {
+  const [seconds, setSeconds] = useState(0);
   useEffect(() => {
+    const parsedServerNow = Date.parse(serverNow);
+    const serverOffset = Number.isFinite(parsedServerNow) ? parsedServerNow - Date.now() : 0;
+    const calculate = () => {
+      if (!deadline) return 0;
+      return Math.max(0, Math.ceil((Date.parse(deadline) - (Date.now() + serverOffset)) / 1000));
+    };
     setSeconds(calculate());
     const timer = window.setInterval(() => setSeconds(calculate()), 250);
     return () => window.clearInterval(timer);
-  }, [calculate]);
+  }, [deadline, serverNow]);
   return seconds;
 }
 
