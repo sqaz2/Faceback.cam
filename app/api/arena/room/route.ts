@@ -23,7 +23,6 @@ import {
 } from "../../../arena/match-config";
 import {
   arenaParticipantIdentity,
-  publicArenaIdentity,
   type ArenaPublicIdentity,
 } from "../../../arena/public-identity";
 import {
@@ -171,7 +170,10 @@ export async function POST(request: Request) {
 
     if (action === "create") {
       await enforceRateLimit("create", user.email, 10, 60 * 60_000);
-      const identity = requireArenaIdentity(await getOwnedProfile(user.email));
+      const identity = arenaParticipantIdentity(
+        (await getOwnedProfile(user.email)) ?? null,
+        user.displayName,
+      );
       for (let attempt = 0; attempt < 6; attempt += 1) {
         const code = makeRoomCode();
         const existing = await getRoom(code);
@@ -936,14 +938,6 @@ async function readPayload(request: Request) {
   } catch {
     throw new HttpError("Send a valid JSON request.", 400);
   }
-}
-
-function requireArenaIdentity(profile: Awaited<ReturnType<typeof getOwnedProfile>>) {
-  const identity = publicArenaIdentity(profile);
-  if (!identity) {
-    throw new HttpError("Create and publish your FACEBACK profile before entering the Arena.", 409);
-  }
-  return identity;
 }
 
 async function enforceRateLimit(

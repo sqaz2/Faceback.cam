@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Copy, Crown, Eye, Radio, RotateCcw, Sparkles, Trophy, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Crown, Eye, Radio, RotateCcw, Share2, Sparkles, Trophy, Users } from "lucide-react";
 import { GAME_MODES, RANDOM_MODE, getGameMode, type ModeChoice } from "./game-modes";
 import {
   MATCH_FORMATS,
@@ -137,7 +137,7 @@ export function ArenaLobby() {
           <article className="arena-entry-card arena-entry-primary">
             <Sparkles size={26} />
             <h2>Start a match</h2>
-            <p>Host up to eight creators, pick solo or teams, choose the pace, then run a short competition without losing the room between rounds.</p>
+            <p>Create the room instantly, then share one player link. No FACEBACK profile is required to host or play.</p>
             <button className="button button-primary" onClick={createRoom} disabled={busy}>Create room <ArrowRight size={18} /></button>
           </article>
           <article className="arena-entry-card">
@@ -159,12 +159,8 @@ export function ArenaLobby() {
             </article>
           ))}
         </div>
-        <p className="arena-vote-help">No FACEBACK profile is required to join. Your ChatGPT display name appears in the Arena; your email is never shown.</p>
-        {error && (
-          <p className="arena-error">
-            {error}{error.includes("FACEBACK profile") && <> <Link href="/studio">Create your profile</Link>.</>}
-          </p>
-        )}
+        <p className="arena-vote-help">No FACEBACK profile is required to host or join. Your ChatGPT display name appears in the Arena; your email is never shown.</p>
+        {error && <p className="arena-error">{error}</p>}
         <div className="arena-rules">
           <span>01 · Configure match</span><span>02 · Create + vote</span><span>03 · Winner teaches</span><span>04 · Final standings</span>
         </div>
@@ -268,9 +264,30 @@ export function ArenaRoom({ code }: { code: string }) {
     finally { setBusy(false); }
   }
 
-  async function copyInvite() {
-    await navigator.clipboard.writeText(window.location.href);
-    setCopied(true); window.setTimeout(() => setCopied(false), 1400);
+  async function shareInvite() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Join FACEBACK Arena room ${code}`,
+          text: `Join my FACEBACK Creative Arena room ${code}. No FACEBACK profile needed.`,
+          url,
+        });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1800);
+      } catch {
+        setError("Unable to open sharing. Copy this page address from your browser.");
+      }
+    }
   }
 
   async function leaveRoom() {
@@ -294,7 +311,17 @@ export function ArenaRoom({ code }: { code: string }) {
 
   if (!state.me) {
     return (
-      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You&apos;re not in this room yet.</h1><p>No FACEBACK profile needed. We&apos;ll use your ChatGPT display name.</p><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}</p>}</section></main>
+      <main className="arena-shell">
+        <header className="arena-topbar"><Link className="wordmark" href="/">FACEBACK<span>.CAM</span></Link></header>
+        <section className="arena-landing arena-join-gate">
+          <p className="eyebrow"><Radio size={16} /> YOU&apos;RE INVITED</p>
+          <h1>Join Arena room <span>{code}</span></h1>
+          <p>Tap once to enter the game. You do not need to create a FACEBACK profile.</p>
+          <button className="button button-primary" onClick={() => act("join")} disabled={busy}>{busy ? "Joining…" : "Join the game"} <ArrowRight size={18} /></button>
+          <small>We use your ChatGPT display name in the room. Your email stays private.</small>
+          {error && <p className="arena-error">{error}</p>}
+        </section>
+      </main>
     );
   }
 
@@ -309,7 +336,7 @@ export function ArenaRoom({ code }: { code: string }) {
         <Link className="wordmark" href="/">FACEBACK<span>.CAM</span></Link>
         <div className="arena-room-actions">
           <Link className="arena-invite" href={`/watch/${code}`}><Eye size={16} /> WATCH LIVE</Link>
-          <button className="arena-invite" onClick={copyInvite}>{copied ? <Check size={16} /> : <Copy size={16} />} ROOM {code}</button>
+          <button className="arena-invite" onClick={shareInvite}>{copied ? <Check size={16} /> : <Share2 size={16} />} {copied ? "LINK COPIED" : "SHARE ROOM"}</button>
         </div>
       </header>
 
@@ -332,9 +359,13 @@ export function ArenaRoom({ code }: { code: string }) {
             <div className="arena-phase-card">
               <p className="eyebrow"><Radio size={15} /> MATCH {state.room.matchNumber} SETUP</p>
               <h1>Set the rules. Then make trouble.</h1>
-              <p>Share <strong>{code}</strong>. The room stays together for the whole match and the scoreboard resets only on rematch.</p>
+              <p>Room <strong>{code}</strong> stays together for the whole match. Share the player link before you start.</p>
               {state.room.isHost ? (
                 <>
+                  <section className="arena-share-card">
+                    <div><span>INVITE PLAYERS</span><strong>Send one link on Facebook.</strong><small>They open it, tap Join the game, and appear here. No FACEBACK profile needed.</small></div>
+                    <button className="button button-primary" onClick={shareInvite}>{copied ? <Check size={18} /> : <Share2 size={18} />} {copied ? "Player link copied" : "Share player link"}</button>
+                  </section>
                   <MatchSetup
                     length={matchLength}
                     format={matchFormat}
