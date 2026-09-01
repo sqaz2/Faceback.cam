@@ -47,14 +47,23 @@ test("Arena identity only accepts a published profile and never needs an email",
   assert.match(authSource, /displayName:\s*fullName\s*\?\?\s*["']FACEBACK Creator["']/);
 });
 
-test("Arena room and spectator queries include profile-free guests", async () => {
+test("Arena room creation and joining both support profile-free players", async () => {
   const roomSource = await readFile(path.join(root, "app/api/arena/room/route.ts"), "utf8");
   const spectatorSource = await readFile(path.join(root, "app/api/arena/spectate/route.ts"), "utf8");
 
   assert.match(roomSource, /arenaParticipantIdentity\([\s\S]*user\.displayName/);
+  assert.equal(roomSource.match(/arenaParticipantIdentity\(/g)?.length, 2);
+  assert.doesNotMatch(roomSource, /requireArenaIdentity/);
+  assert.doesNotMatch(roomSource, /Create and publish your FACEBACK profile/);
   assert.doesNotMatch(roomSource, /JOIN profiles pr ON pr\.id = p\.profile_id AND pr\.published = 1/);
   assert.doesNotMatch(roomSource, /EXISTS \(SELECT 1 FROM profiles WHERE id = arena_players\.profile_id/);
   assert.doesNotMatch(spectatorSource, /JOIN profiles pr ON pr\.id = p\.profile_id AND pr\.published = 1/);
+});
+
+test("the public mobile call to action opens the Arena instead of profile creation", async () => {
+  const homeSource = await readFile(path.join(root, "app/page.tsx"), "utf8");
+  assert.match(homeSource, /className="mini-cta" href="\/arena"/);
+  assert.match(homeSource, />\s*Play\s*</);
 });
 
 test("all game modes and timer presets have valid, unique contracts", async () => {

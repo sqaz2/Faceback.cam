@@ -16,8 +16,8 @@ export default function Home() {
           <a href="#questions">Questions</a>
           <a href="#stories">Stories</a>
         </nav>
-        <Link className="mini-cta" href="/join">
-          Join
+        <Link className="mini-cta" href="/arena">
+          Play
         </Link>
       </header>
 
@@ -37,7 +37,7 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" href="/arena">
-              Enter the creative arena <ArrowRight size={18} />
+              Create or join a live room <ArrowRight size={18} />
             </Link>
             <Link className="button button-quiet" href="/join">
               Build your creator page
