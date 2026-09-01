@@ -15,6 +15,41 @@
       "when": 1787992944092,
       "tag": "0001_nostalgic_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787997000000,
+      "tag": "0002_creative_arena",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788001800000,
+      "tag": "0003_arena_teachbacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788002700000,
+      "tag": "0004_arena_matches",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788004200000,
+      "tag": "0005_arena_live_public",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788253200000,
+      "tag": "0006_arena_integrity",
+      "breakpoints": true
     }
   ]
 }

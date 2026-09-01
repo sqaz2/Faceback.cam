@@ -1,0 +1,83 @@
+.watch-lobby {
+  width: min(980px, 90vw);
+  margin: 0 auto;
+  padding: clamp(4rem, 10vw, 8rem) 0;
+}
+
+.watch-lobby > h1 {
+  max-width: 900px;
+  margin: 0.7rem 0 1rem;
+  font-size: clamp(2.6rem, 8vw, 6.8rem);
+  line-height: 0.92;
+  letter-spacing: -0.07em;
+}
+
+.watch-lobby > p:not(.eyebrow):not(.arena-error) {
+  max-width: 700px;
+  color: var(--paper-muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.watch-code-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  max-width: 620px;
+  margin-top: 2rem;
+}
+
+.watch-code-entry input {
+  min-width: 0;
+  border: 1px solid rgba(242, 238, 230, 0.28);
+  border-radius: 14px;
+  padding: 0.95rem 1rem;
+  background: #0d0d0d;
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 950;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.watch-rules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 3rem;
+}
+
+.watch-rules article {
+  min-height: 170px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1.2rem;
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.watch-rules strong,
+.watch-rules span {
+  display: block;
+}
+
+.watch-rules strong {
+  margin-top: 1rem;
+}
+
+.watch-rules span {
+  margin-top: 0.4rem;
+  color: #999289;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .watch-code-entry,
+  .watch-rules {
+    grid-template-columns: 1fr;
+  }
+
+  .watch-code-entry .button {
+    justify-content: center;
+  }
+}

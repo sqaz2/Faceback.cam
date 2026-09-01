@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./arena.css";
+import "./arena-modes.css";
+import "./arena-match.css";
+import "./arena-public.css";
+import "./watch.css";
+import "./home-live.css";
 
 export const metadata: Metadata = {
   title: {

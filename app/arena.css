@@ -1,0 +1,542 @@
+.arena-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 82% 8%, rgba(240, 74, 36, 0.16), transparent 30rem),
+    radial-gradient(circle at 10% 92%, rgba(217, 255, 87, 0.06), transparent 28rem),
+    var(--ink);
+  color: var(--paper);
+}
+
+.arena-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0 5vw;
+  background: rgba(11, 11, 11, 0.92);
+  backdrop-filter: blur(16px);
+}
+
+.arena-landing {
+  width: min(1120px, 90vw);
+  margin: 0 auto;
+  padding: clamp(4rem, 9vw, 8rem) 0;
+}
+
+.arena-landing > h1,
+.arena-phase-card > h1 {
+  max-width: 900px;
+  margin: 0.6rem 0 1.15rem;
+  font-size: clamp(2.4rem, 7vw, 6.7rem);
+  line-height: 0.92;
+  letter-spacing: -0.07em;
+}
+
+.arena-landing > h1 span {
+  display: block;
+  color: var(--signal-hot);
+}
+
+.arena-lede,
+.arena-phase-card > p {
+  max-width: 720px;
+  color: var(--paper-muted);
+  font-size: clamp(1rem, 1.7vw, 1.2rem);
+  line-height: 1.6;
+}
+
+.arena-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 3rem;
+}
+
+.arena-entry-card {
+  display: flex;
+  min-height: 310px;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: clamp(1.5rem, 4vw, 2.6rem);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.arena-entry-primary {
+  background: linear-gradient(145deg, rgba(240, 74, 36, 0.13), rgba(255, 255, 255, 0.035));
+}
+
+.arena-entry-card h2 {
+  margin: 1.1rem 0 0.5rem;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  letter-spacing: -0.04em;
+}
+
+.arena-entry-card p {
+  max-width: 520px;
+  margin: 0 0 1.5rem;
+  color: var(--paper-muted);
+  line-height: 1.55;
+}
+
+.arena-entry-card .button,
+.arena-code-entry {
+  margin-top: auto;
+}
+
+.arena-code-entry {
+  display: flex;
+  width: 100%;
+  gap: 0.65rem;
+}
+
+.arena-code-entry input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(242, 238, 230, 0.28);
+  border-radius: 14px;
+  padding: 0.95rem 1rem;
+  background: #0d0d0d;
+  color: white;
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.arena-code-entry button,
+.arena-invite,
+.arena-host-control,
+.arena-exit {
+  border: 1px solid rgba(242, 238, 230, 0.25);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.arena-code-entry button {
+  padding: 0 1.25rem;
+}
+
+.arena-rules {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin-top: 2.5rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.arena-rules span {
+  padding: 1rem;
+  background: #0d0d0d;
+  color: #9e988f;
+  font-size: 0.73rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.arena-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+}
+
+.arena-room-grid {
+  display: grid;
+  min-height: calc(100vh - 68px);
+  grid-template-columns: 270px 1fr;
+}
+
+.arena-scoreboard {
+  border-right: 1px solid var(--line);
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.arena-side-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  color: #aaa39a;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.arena-player {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 0.82rem 0;
+}
+
+.arena-player span {
+  color: #777067;
+  font-size: 0.72rem;
+}
+
+.arena-player strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.arena-player b {
+  color: var(--signal-hot);
+}
+
+.arena-exit {
+  width: 100%;
+  margin-top: 1.2rem;
+  padding: 0.7rem;
+}
+
+.arena-stage-live {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 6vw, 5rem);
+}
+
+.arena-phase-card {
+  width: min(900px, 100%);
+}
+
+.arena-phase-card textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid rgba(242, 238, 230, 0.24);
+  border-radius: 20px;
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  outline: none;
+  background: rgba(255, 255, 255, 0.035);
+  color: white;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.5;
+}
+
+.arena-phase-card textarea:focus {
+  border-color: var(--signal-hot);
+  box-shadow: 0 0 0 3px rgba(240, 74, 36, 0.12);
+}
+
+.arena-round-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--signal-hot);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+}
+
+.arena-submit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  color: #9e988f;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.arena-host-control {
+  margin-top: 1.4rem;
+  padding: 0.8rem 1rem;
+}
+
+.arena-waiting {
+  display: inline-flex;
+  margin-top: 1rem;
+  border: 1px dashed rgba(242, 238, 230, 0.25);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  color: #9e988f;
+}
+
+.arena-vote-help {
+  margin-bottom: 1.5rem;
+}
+
+.arena-submissions {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.arena-submission {
+  display: flex;
+  min-height: 120px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1.15rem 1.2rem;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--paper);
+  cursor: pointer;
+  text-align: left;
+}
+
+.arena-submission:hover:not(:disabled),
+.arena-submission-voted {
+  border-color: rgba(240, 74, 36, 0.7);
+  background: rgba(240, 74, 36, 0.08);
+}
+
+.arena-submission-mine {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.arena-submission > span {
+  margin-bottom: 0.55rem;
+  color: #8d867c;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.arena-submission > strong {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.45;
+}
+
+.arena-submission small {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.8rem;
+  color: var(--signal-hot);
+  font-weight: 900;
+}
+
+.arena-winner {
+  border: 1px solid rgba(240, 74, 36, 0.48);
+  border-radius: 22px;
+  margin: 1rem 0;
+  padding: clamp(1.4rem, 4vw, 2.4rem);
+  background: linear-gradient(145deg, rgba(240, 74, 36, 0.14), rgba(255, 255, 255, 0.025));
+}
+
+.arena-winner blockquote {
+  margin: 0;
+  font-size: clamp(1.4rem, 4vw, 2.5rem);
+  font-weight: 850;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+.arena-winner > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.4rem;
+  color: #aaa39a;
+}
+
+.arena-winner > div strong {
+  color: var(--paper);
+}
+
+.arena-winner a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  color: var(--signal-hot);
+  font-weight: 900;
+}
+
+.arena-breakdown {
+  border-left: 3px solid var(--acid);
+  margin: 1.6rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+}
+
+.arena-breakdown span {
+  color: var(--acid);
+  font-size: 0.69rem;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.arena-breakdown p {
+  max-width: 700px;
+  margin: 0.45rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.55;
+}
+
+.arena-error {
+  margin-top: 1rem;
+  border: 1px solid rgba(255, 101, 61, 0.35);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  background: rgba(240, 74, 36, 0.08);
+  color: #ffb5a2;
+  font-weight: 800;
+}
+
+.arena-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  color: #aaa39a;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.arena-home-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+  gap: clamp(2rem, 7vw, 7rem);
+  align-items: center;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(120deg, rgba(240, 74, 36, 0.09), rgba(255, 255, 255, 0.015));
+}
+
+.arena-home-section h2 {
+  max-width: 760px;
+  margin: 0.65rem 0 1rem;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.arena-home-section p:not(.eyebrow) {
+  max-width: 680px;
+  color: var(--paper-muted);
+  line-height: 1.6;
+}
+
+.arena-home-flow {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.arena-home-flow span {
+  border-bottom: 1px solid var(--line);
+  padding: 1.2rem;
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.arena-home-flow span:last-child {
+  border-bottom: 0;
+  color: var(--signal-hot);
+}
+
+@media (max-width: 800px) {
+  .arena-entry-grid,
+  .arena-home-section {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-rules {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .arena-room-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-scoreboard {
+    display: flex;
+    gap: 0.65rem;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0.75rem 1rem;
+  }
+
+  .arena-side-title {
+    min-width: max-content;
+    margin: 0;
+  }
+
+  .arena-player {
+    min-width: 150px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.65rem;
+  }
+
+  .arena-exit {
+    display: none;
+  }
+
+  .arena-stage-live {
+    justify-content: flex-start;
+    padding: 2rem 5vw 4rem;
+  }
+
+  .arena-phase-card > h1 {
+    font-size: clamp(2rem, 10vw, 4rem);
+  }
+
+  .arena-submit-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .arena-submit-row .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 560px) {
+  .arena-topbar .back-link {
+    font-size: 0;
+  }
+
+  .arena-topbar .back-link svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .arena-entry-card {
+    min-height: 260px;
+  }
+
+  .arena-rules {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-code-entry {
+    flex-direction: column;
+  }
+
+  .arena-code-entry button {
+    min-height: 46px;
+  }
+}

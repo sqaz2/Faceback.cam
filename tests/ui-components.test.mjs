@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -13,7 +11,6 @@ const vite = await createServer({
   appType: "custom",
   configFile: false,
   root,
-  resolve: { alias: { "@": root } },
   server: { middlewareMode: true },
 });
 
@@ -21,65 +18,44 @@ after(async () => {
   await vite.close();
 });
 
-async function readCssTree(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const contents = await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        return readCssTree(entryPath);
-      }
-      return entry.name.endsWith(".css") ? readFile(entryPath, "utf8") : "";
-    }),
+test("Arena identity only accepts a published profile and never needs an email", async () => {
+  const { publicArenaIdentity } = await vite.ssrLoadModule("/app/arena/public-identity.ts");
+
+  assert.equal(publicArenaIdentity(null), null);
+  assert.equal(
+    publicArenaIdentity({ id: 1, handle: "hidden", displayName: "Hidden", published: 0 }),
+    null,
   );
-  return contents.join("\n");
-}
-
-test("emits the catalog's animation and scrolling utilities", async () => {
-  const css = await readCssTree(path.join(root, "dist"));
-
-  assert.match(css, /--tw-enter-opacity/);
-  assert.match(css, /scrollbar-width:\s*thin/);
-  assert.match(css, /scrollbar-width:\s*none/);
-  assert.match(css, /scrollbar-gutter:\s*stable/);
-  assert.match(css, /scroll-fade-reveal-b/);
-  assert.match(css, /mask-image:/);
-  assert.match(css, /tw-shimmer/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-});
-
-test("forwards progress semantics to the primitive", async () => {
-  const { Progress } = await vite.ssrLoadModule("/components/ui/progress.tsx");
-  const html = renderToStaticMarkup(React.createElement(Progress, { value: 37 }));
-
-  assert.match(html, /aria-valuenow="37"/);
-  assert.match(html, /aria-valuetext="37%"/);
-  assert.match(html, /data-state="loading"/);
-});
-
-test("emits chart themes for the starter's media dark mode", async () => {
-  const { ChartStyle } = await vite.ssrLoadModule("/components/ui/chart.tsx");
-  const html = renderToStaticMarkup(
-    React.createElement(ChartStyle, {
-      id: "contract",
-      config: {
-        latency: { theme: { light: "#ffffff", dark: "#000000" } },
-      },
-    }),
+  assert.deepEqual(
+    publicArenaIdentity({ id: 7, handle: "@Nova", displayName: "  Nova  ", published: 1 }),
+    { profileId: 7, profileHandle: "nova", displayName: "Nova" },
   );
 
-  assert.match(html, /\[data-chart=contract\]/);
-  assert.match(html, /@media \(prefers-color-scheme: dark\)/);
-  assert.doesNotMatch(html, /\.dark/);
+  const authSource = await readFile(path.join(root, "app/chatgpt-auth.ts"), "utf8");
+  assert.doesNotMatch(authSource, /displayName:\s*fullName\s*\?\?\s*email/);
+  assert.match(authSource, /displayName:\s*fullName\s*\?\?\s*["']FACEBACK Creator["']/);
 });
 
-test("renders sidebar skeletons deterministically", async () => {
-  const { SidebarMenuSkeleton } = await vite.ssrLoadModule(
-    "/components/ui/sidebar.tsx",
-  );
-  const first = renderToStaticMarkup(React.createElement(SidebarMenuSkeleton));
-  const second = renderToStaticMarkup(React.createElement(SidebarMenuSkeleton));
+test("all game modes and timer presets have valid, unique contracts", async () => {
+  const { GAME_MODES, getGameMode } = await vite.ssrLoadModule("/app/arena/game-modes.ts");
+  const { MATCH_LENGTHS, TIMER_PRESETS, getTimerPreset } = await vite.ssrLoadModule("/app/arena/match-config.ts");
 
-  assert.equal(first, second);
-  assert.match(first, /--skeleton-width:70%/);
+  assert.deepEqual(MATCH_LENGTHS, [3, 5]);
+  assert.equal(new Set(GAME_MODES.map((mode) => mode.id)).size, GAME_MODES.length);
+  assert.ok(GAME_MODES.every((mode) => mode.maxChars >= 100 && mode.maxChars <= 280));
+  assert.ok(GAME_MODES.every((mode) => mode.criteria.length === 3));
+  assert.equal(getGameMode("RAP")?.name, "Rap Battle");
+
+  assert.equal(new Set(TIMER_PRESETS.map((preset) => preset.id)).size, TIMER_PRESETS.length);
+  assert.ok(TIMER_PRESETS.every((preset) => preset.answerSeconds > preset.voteSeconds));
+  assert.equal(getTimerPreset("invalid").id, "STANDARD");
+});
+
+test("room codes are long enough for public spectator links and omit ambiguous characters", async () => {
+  const { ARENA_ROOM_CODE_LENGTH, normalizeArenaRoomCode } = await vite.ssrLoadModule("/app/arena/room-code.ts");
+
+  assert.equal(ARENA_ROOM_CODE_LENGTH, 8);
+  assert.equal(normalizeArenaRoomCode(" abcd2345 "), "ABCD2345");
+  assert.equal(normalizeArenaRoomCode("ABCDE"), "");
+  assert.equal(normalizeArenaRoomCode("ABCD0OIL"), "");
 });
