@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Crown, Eye, Radio, Trophy, Users } from "lucide-react";
+import { ArrowRight, Bot, Crown, Eye, Radio, Trophy, Users } from "lucide-react";
 import { getGameMode } from "../arena/game-modes";
 import { TEAM_SIGNAL, TEAM_STATIC, teamLabel } from "../arena/match-config";
 
@@ -21,7 +21,7 @@ type SpectatorState = {
     timerPreset: string;
     teamScores: { signal: number; static: number };
   };
-  players: Array<{ id: number; displayName: string; profileHandle: string; score: number; team: string }>;
+  players: Array<{ id: number; displayName: string; profileHandle: string; score: number; team: string; isBot: boolean }>;
   round: {
     id: number;
     roundNumber: number;
@@ -109,7 +109,7 @@ export function SpectatorRoom({ code }: { code: string }) {
           <div className="spectator-roster">
             <span><Users size={15} /> {state.counts.players} creators</span>
             {state.players.map((player, index) => (
-              <div key={player.id}><b>{index + 1}</b><strong>{player.displayName}</strong><span>{player.score}</span></div>
+              <div key={player.id}><b>{index + 1}</b><strong>{player.displayName}{player.isBot && <small className="spectator-cpu"><Bot size={11} /> CPU</small>}</strong><span>{player.score}</span></div>
             ))}
           </div>
         </aside>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Crown, Eye, Radio, RotateCcw, Share2, Sparkles, Trophy, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Check, Crown, Eye, Globe2, Lock, Radio, RotateCcw, Share2, Sparkles, Trophy, Users } from "lucide-react";
 import { GAME_MODES, RANDOM_MODE, getGameMode, type ModeChoice } from "./game-modes";
 import {
   MATCH_FORMATS,
@@ -43,7 +43,10 @@ type ArenaPlayer = {
   profileHandle: string;
   score: number;
   team: string;
+  isBot: boolean;
 };
+
+type RoomVisibility = "public" | "private";
 
 type ArenaState = {
   serverNow: string;
@@ -63,6 +66,7 @@ type ArenaState = {
     answerSeconds: number;
     voteSeconds: number;
     teamScores: { signal: number; static: number };
+    visibility: RoomVisibility;
   };
   me: { id: number; team: string } | null;
   players: ArenaPlayer[];
@@ -83,7 +87,7 @@ type ArenaState = {
   myVoteId: number | null;
   winners: Winner[];
   meIsWinner: boolean;
-  counts: { players: number; submissions: number; votes: number; teachbacks: number };
+  counts: { players: number; submissions: number; votes: number; teachbacks: number; bots: number };
 };
 
 async function arenaAction(payload: Record<string, unknown>) {
@@ -100,13 +104,14 @@ async function arenaAction(payload: Record<string, unknown>) {
 export function ArenaLobby() {
   const router = useRouter();
   const [code, setCode] = useState("");
+  const [visibility, setVisibility] = useState<RoomVisibility>("public");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function createRoom() {
     setBusy(true); setError("");
     try {
-      const data = await arenaAction({ action: "create" });
+      const data = await arenaAction({ action: "create", visibility });
       if (data.code) router.push(`/arena/${data.code}`);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to create room"); }
     finally { setBusy(false); }
@@ -137,7 +142,15 @@ export function ArenaLobby() {
           <article className="arena-entry-card arena-entry-primary">
             <Sparkles size={26} />
             <h2>Start a match</h2>
-            <p>Create the room instantly, then share one player link. No FACEBACK profile is required to host or play.</p>
+            <p>Create the room instantly. Public rooms appear on the FACEBACK home page; private rooms can only be reached with your link.</p>
+            <div className="arena-visibility-picker" aria-label="Room visibility">
+              <button className={visibility === "public" ? "arena-visibility-selected" : ""} onClick={() => setVisibility("public")} type="button" aria-pressed={visibility === "public"}>
+                <Globe2 size={18} /><span><strong>Public</strong><small>Listed + shareable</small></span>
+              </button>
+              <button className={visibility === "private" ? "arena-visibility-selected" : ""} onClick={() => setVisibility("private")} type="button" aria-pressed={visibility === "private"}>
+                <Lock size={18} /><span><strong>Private</strong><small>Link-only</small></span>
+              </button>
+            </div>
             <button className="button button-primary" onClick={createRoom} disabled={busy}>Create room <ArrowRight size={18} /></button>
           </article>
           <article className="arena-entry-card">
@@ -343,11 +356,17 @@ export function ArenaRoom({ code }: { code: string }) {
       <section className="arena-room-grid">
         <aside className="arena-scoreboard">
           <MatchStatus state={state} />
-          <div className="arena-side-title"><Users size={17} /><span>{state.counts.players}/{state.room.maxPlayers} creators</span></div>
+          <div className="arena-side-title"><Users size={17} /><span>{state.counts.players}/{state.room.maxPlayers} players</span></div>
           {sortedScores.map((player, index) => (
             <div className="arena-player arena-player-match" key={player.id}>
               <span>{index + 1}</span>
-              <div><strong>{player.displayName}</strong>{state.room.matchFormat === "TEAMS" && player.team && <small className={`arena-team-mini arena-team-${player.team.toLowerCase()}`}>{teamLabel(player.team)}</small>}</div>
+              <div>
+                <strong>{player.displayName}</strong>
+                <div className="arena-player-badges">
+                  {player.isBot && <small className="arena-cpu-mini"><Bot size={11} /> CPU</small>}
+                  {state.room.matchFormat === "TEAMS" && player.team && <small className={`arena-team-mini arena-team-${player.team.toLowerCase()}`}>{teamLabel(player.team)}</small>}
+                </div>
+              </div>
               <b>{player.score}</b>
             </div>
           ))}
@@ -363,8 +382,23 @@ export function ArenaRoom({ code }: { code: string }) {
               {state.room.isHost ? (
                 <>
                   <section className="arena-share-card">
-                    <div><span>INVITE PLAYERS</span><strong>Send one link on Facebook.</strong><small>They open it, tap Join the game, and appear here. No FACEBACK profile needed.</small></div>
+                    <div>
+                      <span>{state.room.visibility === "public" ? <><Globe2 size={13} /> PUBLIC ROOM</> : <><Lock size={13} /> PRIVATE ROOM</>}</span>
+                      <strong>Send one player link on Facebook.</strong>
+                      <small>{state.room.visibility === "public" ? "This room is also listed on the FACEBACK home page while joinable." : "This room is link-only and will not appear on the FACEBACK home page."} No FACEBACK profile needed.</small>
+                    </div>
                     <button className="button button-primary" onClick={shareInvite}>{copied ? <Check size={18} /> : <Share2 size={18} />} {copied ? "Player link copied" : "Share player link"}</button>
+                  </section>
+                  <section className="arena-cpu-card">
+                    <div className="arena-cpu-copy">
+                      <Bot size={22} />
+                      <div><span>COMPUTER PLAYERS</span><strong>Run the match before people arrive.</strong><small>CPU players create entries, vote with different tastes, and explain winning moves. They are built in and free to run.</small></div>
+                    </div>
+                    <div className="arena-cpu-controls">
+                      <button onClick={() => act("remove-bot")} disabled={busy || state.counts.bots === 0} type="button" aria-label="Remove a computer player">−</button>
+                      <strong>{state.counts.bots} CPU</strong>
+                      <button onClick={() => act("add-bot")} disabled={busy || state.counts.players >= state.room.maxPlayers} type="button" aria-label="Add a computer player">+</button>
+                    </div>
                   </section>
                   <MatchSetup
                     length={matchLength}

@@ -7,6 +7,7 @@ import {
   isGameModeId,
   type GameModeId,
 } from "../../../arena/game-modes";
+import { CPU_PERSONAS, createCpuAnswer } from "../../../arena/bots";
 import {
   TEAM_SIGNAL,
   TEAM_STATIC,
@@ -48,7 +49,10 @@ type RoomRow = {
   timerPreset: TimerPreset;
   answerSeconds: number;
   voteSeconds: number;
+  visibility: RoomVisibility;
 };
+
+type RoomVisibility = "public" | "private";
 
 type PlayerRow = {
   id: number;
@@ -56,6 +60,7 @@ type PlayerRow = {
   profileHandle: string;
   score: number;
   team: string;
+  isBot: number;
 };
 
 type RoundRow = {
@@ -170,6 +175,10 @@ export async function POST(request: Request) {
 
     if (action === "create") {
       await enforceRateLimit("create", user.email, 10, 60 * 60_000);
+      const visibility = cleanText(payload.visibility, 10).toLowerCase() || "public";
+      if (!isRoomVisibility(visibility)) {
+        return Response.json({ error: "Choose a public or private room." }, { status: 400 });
+      }
       const identity = arenaParticipantIdentity(
         (await getOwnedProfile(user.email)) ?? null,
         user.displayName,
@@ -181,7 +190,9 @@ export async function POST(request: Request) {
 
         try {
           await db().batch([
-            db().prepare("INSERT INTO arena_rooms (code, host_email) VALUES (?, ?)").bind(code, user.email),
+            db()
+              .prepare("INSERT INTO arena_rooms (code, host_email, visibility) VALUES (?, ?, ?)")
+              .bind(code, user.email, visibility),
             db()
               .prepare(
                 `INSERT INTO arena_players
@@ -190,10 +201,12 @@ export async function POST(request: Request) {
               )
               .bind(user.email, identity.profileId, identity.displayName, identity.profileHandle, code),
           ]);
-          return Response.json({ code });
+          return Response.json({ code, visibility });
         } catch (error) {
           const allocated = await getRoom(code);
-          if (allocated?.hostEmail === user.email) return Response.json({ code });
+          if (allocated?.hostEmail === user.email) {
+            return Response.json({ code, visibility: allocated.visibility });
+          }
           if (allocated) continue;
           throw error;
         }
@@ -241,6 +254,14 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
+    if (action === "add-bot" || action === "remove-bot") {
+      requireHost(room, user.email);
+      requireMatchSetup(room);
+      if (action === "add-bot") await addCpuPlayer(room);
+      else await removeCpuPlayer(room);
+      return Response.json({ ok: true });
+    }
+
     if (action === "leave") {
       await db().batch([
         db()
@@ -256,6 +277,7 @@ export async function POST(request: Request) {
              SET host_email = COALESCE(
                (SELECT user_email FROM arena_players
                 WHERE room_id = ? AND active = 1
+                  AND is_bot = 0
                   AND last_seen_at >= datetime('now', '-150 seconds')
                 ORDER BY joined_at ASC, id ASC LIMIT 1),
                host_email
@@ -299,7 +321,7 @@ export async function POST(request: Request) {
         return Response.json({ error: "That match is complete. Start a rematch first." }, { status: 409 });
       }
       if ((await playerCount(room.id)) < 2) {
-        return Response.json({ error: "At least two creators are needed." }, { status: 409 });
+        return Response.json({ error: "At least two players are needed. Invite someone or add a computer player." }, { status: 409 });
       }
 
       let matchLength = room.matchLength as MatchLength;
@@ -374,6 +396,13 @@ export async function POST(request: Request) {
       if (!mode) return Response.json({ error: "Choose a valid game mode." }, { status: 400 });
       const prompt = choosePrompt(mode, room.id, room.matchNumber, roundNumber);
       const answerDeadline = deadlineAfter(answerSeconds);
+      const cpuSubmissions = await cpuSubmissionStatements(
+        room.id,
+        room.matchNumber,
+        roundNumber,
+        mode,
+        prompt,
+      );
 
       await db().batch([
         db()
@@ -392,9 +421,10 @@ export async function POST(request: Request) {
              AND EXISTS (
                SELECT 1 FROM arena_rounds
                WHERE room_id = ? AND match_number = ? AND round_number = ? AND status = 'answering'
-             )`,
+          )`,
           )
           .bind(roundNumber, room.id, room.id, room.matchNumber, roundNumber),
+        ...cpuSubmissions,
       ]);
       return Response.json({ ok: true, mode, answerDeadline });
     }
@@ -543,7 +573,7 @@ async function roomState(code: string, email: string) {
     .prepare(
       `SELECT p.id, p.display_name AS displayName,
         CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
-        p.score, p.team
+        p.score, p.team, p.is_bot AS isBot
        FROM arena_players p
        LEFT JOIN profiles pr ON pr.id = p.profile_id
        WHERE p.room_id = ? AND p.active = 1
@@ -551,7 +581,7 @@ async function roomState(code: string, email: string) {
     )
     .bind(room.id)
     .all<PlayerRow>();
-  const players = playersResult.results;
+  const players = playersResult.results.map((player) => ({ ...player, isBot: Boolean(player.isBot) }));
   const round = await getCurrentRound(room);
   const history = await roundHistory(room.id, room.matchNumber);
 
@@ -639,6 +669,7 @@ async function roomState(code: string, email: string) {
         signal: room.signalScore,
         static: room.staticScore,
       },
+      visibility: room.visibility,
     },
     me: me ? { id: me.id, team: me.team } : null,
     players,
@@ -666,6 +697,7 @@ async function roomState(code: string, email: string) {
       submissions: round ? await submissionCount(round.id) : 0,
       votes: round ? await voteCount(round.id) : 0,
       teachbacks: teachbackCount,
+      bots: players.filter((player) => player.isBot).length,
     },
   };
 }
@@ -679,7 +711,8 @@ async function getRoom(code: string) {
         rotation_mode AS rotationMode, match_status AS matchStatus,
         match_number AS matchNumber, signal_score AS signalScore,
         static_score AS staticScore, timer_preset AS timerPreset,
-        answer_seconds AS answerSeconds, vote_seconds AS voteSeconds
+        answer_seconds AS answerSeconds, vote_seconds AS voteSeconds,
+        visibility
        FROM arena_rooms WHERE code = ? LIMIT 1`,
     )
     .bind(code)
@@ -691,7 +724,7 @@ async function getPlayer(roomId: number, email: string) {
     .prepare(
       `SELECT p.id, p.display_name AS displayName,
         CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
-        p.score, p.team
+        p.score, p.team, p.is_bot AS isBot
        FROM arena_players p
        LEFT JOIN profiles pr ON pr.id = p.profile_id
        WHERE p.room_id = ? AND p.user_email = ? AND p.active = 1 LIMIT 1`,
@@ -704,13 +737,15 @@ async function addPlayer(roomId: number, email: string, identity: ArenaPublicIde
   await db()
     .prepare(
       `INSERT INTO arena_players
-        (room_id, user_email, profile_id, display_name, profile_handle, team, active, left_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, NULL)
+        (room_id, user_email, profile_id, display_name, profile_handle, team, active, left_at, is_bot, bot_key)
+       VALUES (?, ?, ?, ?, ?, ?, 1, NULL, 0, '')
        ON CONFLICT(room_id, user_email) DO UPDATE SET
          profile_id = excluded.profile_id,
          display_name = excluded.display_name,
          profile_handle = excluded.profile_handle,
          team = excluded.team,
+         is_bot = 0,
+         bot_key = '',
          active = 1,
          left_at = NULL,
          last_seen_at = CURRENT_TIMESTAMP`,
@@ -726,12 +761,14 @@ async function ensureActiveHost(roomId: number) {
        SET host_email = (
          SELECT user_email FROM arena_players
          WHERE room_id = ? AND active = 1
+           AND is_bot = 0
            AND last_seen_at >= datetime('now', '-150 seconds')
          ORDER BY joined_at ASC, id ASC LIMIT 1
        ), updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND NOT EXISTS (
          SELECT 1 FROM arena_players
          WHERE room_id = ? AND user_email = arena_rooms.host_email AND active = 1
+           AND is_bot = 0
        )`,
     )
     .bind(roomId, roomId, roomId)
@@ -745,6 +782,7 @@ async function ensureResponsiveHost(roomId: number) {
        SET host_email = (
          SELECT user_email FROM arena_players
          WHERE room_id = ? AND active = 1
+           AND is_bot = 0
            AND last_seen_at >= datetime('now', '-150 seconds')
          ORDER BY joined_at ASC, id ASC LIMIT 1
        ), updated_at = CURRENT_TIMESTAMP
@@ -752,11 +790,13 @@ async function ensureResponsiveHost(roomId: number) {
          AND EXISTS (
            SELECT 1 FROM arena_players
            WHERE room_id = ? AND active = 1
+             AND is_bot = 0
              AND last_seen_at >= datetime('now', '-150 seconds')
          )
          AND NOT EXISTS (
            SELECT 1 FROM arena_players
            WHERE room_id = ? AND user_email = arena_rooms.host_email AND active = 1
+             AND is_bot = 0
              AND last_seen_at >= datetime('now', '-150 seconds')
          )`,
     )
@@ -882,6 +922,82 @@ async function matchTeamStatements(roomId: number, matchFormat: MatchFormat, mat
   })];
 }
 
+async function addCpuPlayer(room: RoomRow) {
+  if ((await playerCount(room.id)) >= room.maxPlayers) {
+    throw new HttpError("That room is full.", 409);
+  }
+
+  const active = await db()
+    .prepare("SELECT bot_key AS botKey FROM arena_players WHERE room_id = ? AND active = 1 AND is_bot = 1")
+    .bind(room.id)
+    .all<{ botKey: string }>();
+  const activeKeys = new Set(active.results.map((entry) => entry.botKey));
+  const persona = CPU_PERSONAS.find((entry) => !activeKeys.has(entry.key));
+  if (!persona) throw new HttpError("All available computer players are already in the room.", 409);
+
+  const team = room.matchFormat === "TEAMS" ? await smallerTeam(room.id) : "";
+  const syntheticEmail = `cpu-${room.id}-${persona.key}-${crypto.randomUUID()}@faceback.invalid`;
+  await db()
+    .prepare(
+      `INSERT INTO arena_players
+        (room_id, user_email, profile_id, display_name, profile_handle, team, active, left_at, is_bot, bot_key)
+       VALUES (?, ?, NULL, ?, '', ?, 1, NULL, 1, ?)`,
+    )
+    .bind(room.id, syntheticEmail, persona.name, team, persona.key)
+    .run();
+}
+
+async function removeCpuPlayer(room: RoomRow) {
+  const bot = await db()
+    .prepare(
+      `SELECT id FROM arena_players
+       WHERE room_id = ? AND active = 1 AND is_bot = 1
+       ORDER BY joined_at DESC, id DESC LIMIT 1`,
+    )
+    .bind(room.id)
+    .first<{ id: number }>();
+  if (!bot) throw new HttpError("There are no computer players to remove.", 409);
+  await db()
+    .prepare(
+      `UPDATE arena_players
+       SET active = 0, left_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND active = 1 AND is_bot = 1`,
+    )
+    .bind(bot.id)
+    .run();
+}
+
+async function cpuSubmissionStatements(
+  roomId: number,
+  matchNumber: number,
+  roundNumber: number,
+  mode: GameModeId,
+  prompt: string,
+) {
+  const bots = await db()
+    .prepare(
+      `SELECT id, bot_key AS botKey FROM arena_players
+       WHERE room_id = ? AND active = 1 AND is_bot = 1
+       ORDER BY joined_at ASC, id ASC`,
+    )
+    .bind(roomId)
+    .all<{ id: number; botKey: string }>();
+  const maxChars = getGameMode(mode)?.maxChars ?? 280;
+  return bots.results.map((bot) => {
+    const content = createCpuAnswer(mode, prompt, bot.botKey, roundNumber, maxChars);
+    return db()
+      .prepare(
+        `INSERT INTO arena_submissions (round_id, player_id, content)
+         SELECT rounds.id, ?, ? FROM arena_rounds rounds
+         WHERE rounds.room_id = ? AND rounds.match_number = ?
+           AND rounds.round_number = ? AND rounds.status = 'answering'
+         ON CONFLICT(round_id, player_id)
+         DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
+      )
+      .bind(bot.id, content, roomId, matchNumber, roundNumber);
+  });
+}
+
 function winnerPlayerIds(rows: SubmissionRow[]) {
   if (rows.length === 0) return [];
   const top = Math.max(...rows.map((entry) => Number(entry.voteCount || 0)));
@@ -890,6 +1006,16 @@ function winnerPlayerIds(rows: SubmissionRow[]) {
 
 function requireHost(room: RoomRow, email: string) {
   if (room.hostEmail !== email) throw new HttpError("Only the room host can do that.", 403);
+}
+
+function requireMatchSetup(room: RoomRow) {
+  if (room.phase !== "lobby" || room.matchStatus !== "setup") {
+    throw new HttpError("Computer players can be changed before the match starts.", 409);
+  }
+}
+
+function isRoomVisibility(value: string): value is RoomVisibility {
+  return value === "public" || value === "private";
 }
 
 function normalizeCode(value: unknown) {

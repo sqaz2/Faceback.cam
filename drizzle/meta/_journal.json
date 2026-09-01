@@ -50,6 +50,13 @@
       "when": 1788253200000,
       "tag": "0006_arena_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788258600000,
+      "tag": "0007_arena_public_rooms_and_bots",
+      "breakpoints": true
     }
   ]
 }
