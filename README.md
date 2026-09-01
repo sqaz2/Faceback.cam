@@ -98,10 +98,11 @@ The repository also includes `.github/workflows/ci.yml`, which runs dependency i
 
 The creator/profile Drizzle schema lives in `db/schema.ts`. Arena runtime SQL is intentionally migration-managed, with its canonical additive schema and upgrades in `drizzle/`; migration tests apply both a clean install and an upgrade from the pre-integrity Arena schema:
 
-- `0001_creative_arena.sql` — rooms, players, rounds, submissions and votes
-- `0002_arena_teachbacks.sql` — winner breakdowns
-- `0003_arena_matches.sql` — match settings, match numbering, team assignments and team scoring
-- `0004_arena_live_public.sql` — server timers/deadlines plus indexes supporting public Arena history
-- `0005_arena_integrity.sql` — stable profile ownership, active membership, idempotent round awards and action-rate counters
+- `0001_nostalgic_cerebro.sql` — existing synchronized Quickfire rooms and players
+- `0002_creative_arena.sql` — Arena rooms, players, rounds, submissions and votes
+- `0003_arena_teachbacks.sql` — winner breakdowns
+- `0004_arena_matches.sql` — match settings, match numbering, team assignments and team scoring
+- `0005_arena_live_public.sql` — server timers/deadlines plus indexes supporting public Arena history
+- `0006_arena_integrity.sql` — stable profile ownership, active membership, idempotent round awards and action-rate counters
 
 Arena runtime queries are raw D1 queries in its API routes. Reveals use a unique award ledger plus score recomputation, so retries cannot increment a winner twice. Authenticated mutations use D1-backed fixed-window limits; public room codes use eight ambiguity-free characters to make spectator-code enumeration impractical.

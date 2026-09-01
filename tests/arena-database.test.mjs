@@ -51,7 +51,7 @@ test("Arena migrations apply cleanly and preserve referential integrity", async 
 });
 
 test("integrity migration backfills existing Arena players without losing data", async () => {
-  const database = await migratedDatabase("0004_arena_live_public.sql");
+  const database = await migratedDatabase("0005_arena_live_public.sql");
   try {
     database.exec(`
       INSERT INTO profiles (user_email, handle, display_name) VALUES
@@ -69,7 +69,7 @@ test("integrity migration backfills existing Arena players without losing data",
       INSERT INTO arena_votes (round_id, voter_player_id, submission_id) VALUES (1, 2, 1);
     `);
 
-    await applyMigration(database, "0005_arena_integrity.sql");
+    await applyMigration(database, "0006_arena_integrity.sql");
     const player = database.prepare("SELECT profile_id AS profileId, active, left_at AS leftAt FROM arena_players").get();
     assert.equal(player.profileId, 1);
     assert.equal(player.active, 1);
