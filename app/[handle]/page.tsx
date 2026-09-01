@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight, Layers3, Link2, Play, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Layers3, Link2, Play, Sparkles, Trophy } from "lucide-react";
 import { notFound } from "next/navigation";
-import { getPublicProfile } from "../../db/profile-queries";
+import { getPublicArenaHistory, getPublicProfile, type PublicArenaMoment } from "../../db/profile-queries";
+import { getGameMode } from "../arena/game-modes";
 import { featuredWork } from "../content";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,10 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
   const creator = await resolveCreator(handle);
   if (!creator) notFound();
   const categories = [...new Set(creator.works.map((work) => work.type.split("·")[0].trim()))].slice(0, 5);
+  const arenaHistory = await resolveArenaHistory(creator.handle);
+  const arenaWins = arenaHistory.filter((moment) => moment.won).length;
+  const arenaMatches = new Set(arenaHistory.map((moment) => `${moment.roomCode}:${moment.matchNumber}`)).size;
+  const arenaLessons = arenaHistory.filter((moment) => moment.lesson).length;
 
   return (
     <main className={`profile-shell profile-accent-${creator.accent}`}>
@@ -104,6 +109,26 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
         </section>
       )}
 
+      {arenaHistory.length > 0 && (
+        <section className="profile-arena-section">
+          <div className="profile-arena-heading">
+            <div>
+              <p className="eyebrow"><Trophy size={16} /> Creative Arena record</p>
+              <h2>What landed under pressure.</h2>
+              <p>Revealed Arena rounds follow the creator back to their profile, including the winning move and any lesson they taught afterward.</p>
+            </div>
+            <div className="profile-arena-stats">
+              <article><strong>{arenaWins}</strong><span>round wins</span></article>
+              <article><strong>{arenaMatches}</strong><span>matches</span></article>
+              <article><strong>{arenaLessons}</strong><span>teach-backs</span></article>
+            </div>
+          </div>
+          <div className="profile-arena-list">
+            {arenaHistory.slice(0, 10).map((moment) => <ArenaMoment key={moment.roundId} moment={moment} />)}
+          </div>
+        </section>
+      )}
+
       <section className={`inventory-section ${creator.story ? "" : "inventory-no-story"}`}>
         <div className="inventory-heading">
           <div>
@@ -153,6 +178,27 @@ export default async function CreatorPage({ params }: CreatorPageProps) {
         </Link>
       </section>
     </main>
+  );
+}
+
+function ArenaMoment({ moment }: { moment: PublicArenaMoment }) {
+  const mode = getGameMode(moment.mode);
+  return (
+    <article className={`profile-arena-moment ${moment.won ? "profile-arena-win" : ""}`}>
+      <div className="profile-arena-meta">
+        <span>{moment.won ? "ROUND WIN" : "ARENA ENTRY"}</span>
+        <span>MATCH {moment.matchNumber} · ROUND {moment.roundNumber} · {mode?.name ?? moment.mode}</span>
+      </div>
+      <p className="profile-arena-prompt">{moment.prompt}</p>
+      <blockquote>“{moment.content}”</blockquote>
+      <div className="profile-arena-votes"><strong>{moment.voteCount}</strong> vote{moment.voteCount === 1 ? "" : "s"}</div>
+      {moment.lesson && (
+        <div className="profile-arena-lesson">
+          <span>SCHOOL THE ROOM · STEAL THIS</span>
+          <p>{moment.lesson}</p>
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -210,6 +256,14 @@ async function resolveCreator(rawHandle: string): Promise<DisplayProfile | null>
     founding: true,
     works: foundingWorks(),
   };
+}
+
+async function resolveArenaHistory(handle: string) {
+  try {
+    return await getPublicArenaHistory(handle);
+  } catch {
+    return [];
+  }
 }
 
 function foundingWorks(): DisplayWork[] {

@@ -1,0 +1,565 @@
+.arena-room-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.arena-room-actions .arena-invite {
+  text-decoration: none;
+}
+
+.arena-clock {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid rgba(242, 238, 230, 0.18);
+  border-radius: 16px;
+  margin: 1rem 0 1.25rem;
+  padding: 0.8rem 1rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.arena-clock > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #aaa39a;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.arena-clock > strong {
+  justify-self: center;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.55rem, 4vw, 2.6rem);
+  letter-spacing: -0.04em;
+}
+
+.arena-clock > small {
+  color: #817a71;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.arena-clock-overtime {
+  border-color: rgba(240, 74, 36, 0.48);
+  background: rgba(240, 74, 36, 0.08);
+}
+
+.arena-clock-overtime > span,
+.arena-clock-overtime > strong {
+  color: var(--signal-hot);
+}
+
+.arena-timer-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.spectator-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 76% 4%, rgba(240, 74, 36, 0.12), transparent 30rem),
+    var(--ink);
+  color: var(--paper);
+}
+
+.spectator-topbar {
+  position: sticky;
+  top: 0;
+}
+
+.spectator-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #aaa39a;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.spectator-join {
+  min-height: 40px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.72rem;
+}
+
+.spectator-grid {
+  display: grid;
+  min-height: calc(100vh - 68px);
+  grid-template-columns: 290px minmax(0, 1fr);
+}
+
+.spectator-sidebar {
+  border-right: 1px solid var(--line);
+  padding: 1.2rem;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.spectator-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(242, 238, 230, 0.2);
+  border-radius: 999px;
+  width: max-content;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.7rem;
+  color: #aaa39a;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+}
+
+.spectator-team-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin: 1rem 0;
+  padding: 0.8rem;
+}
+
+.spectator-team-score article {
+  text-align: center;
+}
+
+.spectator-team-score article span {
+  display: block;
+  color: #898278;
+  font-size: 0.6rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.spectator-team-score article strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.7rem;
+}
+
+.spectator-team-score > b {
+  color: #6f6961;
+  font-size: 0.65rem;
+}
+
+.spectator-roster > span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1rem 0 0.5rem;
+  color: #9e988f;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spectator-roster > div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  border-top: 1px solid var(--line);
+  padding: 0.75rem 0;
+}
+
+.spectator-roster > div b {
+  color: #6f6961;
+  font-size: 0.7rem;
+}
+
+.spectator-roster > div strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+}
+
+.spectator-roster > div span {
+  color: var(--signal-hot);
+  font-weight: 950;
+}
+
+.spectator-stage {
+  display: flex;
+  min-width: 0;
+  justify-content: center;
+  padding: clamp(2rem, 6vw, 5rem);
+}
+
+.spectator-card {
+  width: min(920px, 100%);
+}
+
+.spectator-card > h1 {
+  max-width: 880px;
+  margin: 0.8rem 0 1rem;
+  font-size: clamp(2.1rem, 6vw, 5.6rem);
+  line-height: 0.94;
+  letter-spacing: -0.065em;
+}
+
+.spectator-card > p:not(.eyebrow):not(.arena-vote-help) {
+  color: var(--paper-muted);
+  line-height: 1.6;
+}
+
+.spectator-mode {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  border-left: 3px solid var(--signal-hot);
+  margin: 1rem 0;
+  padding-left: 0.8rem;
+}
+
+.spectator-mode span,
+.spectator-mode small {
+  color: #8e877e;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.spectator-hidden-entries {
+  display: grid;
+  justify-items: center;
+  border: 1px dashed rgba(242, 238, 230, 0.22);
+  border-radius: 20px;
+  margin-top: 1.5rem;
+  padding: 2rem;
+  color: #8f887f;
+  text-align: center;
+}
+
+.spectator-hidden-entries strong {
+  margin-top: 0.7rem;
+  color: var(--paper);
+  font-size: 1.15rem;
+}
+
+.spectator-hidden-entries p {
+  max-width: 520px;
+  margin: 0.5rem 0 0;
+  line-height: 1.5;
+}
+
+.spectator-submissions .arena-submission {
+  cursor: default;
+}
+
+.spectator-vote-count {
+  margin-top: 1rem;
+  color: #9e988f;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.spectator-teachback {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin-top: 1.25rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--line);
+}
+
+.spectator-teachback > div {
+  background: #101010;
+  padding: 1rem;
+}
+
+.spectator-teachback span {
+  color: var(--acid);
+  font-size: 0.63rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.spectator-teachback p {
+  margin: 0.45rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+.spectator-results-list {
+  margin-top: 1.2rem;
+}
+
+.spectator-results-list article {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  border-top: 1px solid var(--line);
+  padding: 0.9rem 0;
+}
+
+.spectator-results-list article > span {
+  color: #716a62;
+  font-size: 0.72rem;
+}
+
+.spectator-results-list article p {
+  margin: 0.25rem 0 0;
+  color: #aaa39a;
+  line-height: 1.45;
+}
+
+.spectator-results-list article > b {
+  color: var(--signal-hot);
+}
+
+.spectator-final {
+  border-top: 1px solid var(--line);
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+}
+
+.spectator-final > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--signal-hot);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.spectator-final > article {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  border-top: 1px solid var(--line);
+  padding: 0.85rem 0;
+}
+
+.spectator-champion strong,
+.spectator-champion b {
+  color: var(--acid);
+}
+
+.profile-arena-section {
+  padding: clamp(4rem, 8vw, 7rem) 5vw;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(150deg, rgba(240, 74, 36, 0.055), transparent 55%);
+}
+
+.profile-arena-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2rem;
+  align-items: end;
+  max-width: 1180px;
+  margin: 0 auto 2rem;
+}
+
+.profile-arena-heading h2 {
+  margin: 0.55rem 0;
+  font-size: clamp(2rem, 5vw, 4.1rem);
+  letter-spacing: -0.055em;
+}
+
+.profile-arena-heading p:not(.eyebrow) {
+  max-width: 680px;
+  color: var(--paper-muted);
+  line-height: 1.55;
+}
+
+.profile-arena-stats {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.profile-arena-stats article {
+  min-width: 90px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.8rem;
+  text-align: center;
+}
+
+.profile-arena-stats strong {
+  display: block;
+  font-size: 1.5rem;
+}
+
+.profile-arena-stats span {
+  color: #8d867d;
+  font-size: 0.63rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.profile-arena-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.profile-arena-moment {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: clamp(1.2rem, 3vw, 1.8rem);
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.profile-arena-win {
+  border-color: rgba(240, 74, 36, 0.38);
+  background: rgba(240, 74, 36, 0.05);
+}
+
+.profile-arena-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  color: #8b847a;
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+}
+
+.profile-arena-win .profile-arena-meta span:first-child {
+  color: var(--signal-hot);
+}
+
+.profile-arena-prompt {
+  margin: 0.75rem 0 0;
+  color: #9e978e;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.profile-arena-moment blockquote {
+  margin: 1rem 0;
+  font-size: clamp(1.15rem, 2.4vw, 1.65rem);
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.profile-arena-votes {
+  color: #8d867d;
+  font-size: 0.72rem;
+}
+
+.profile-arena-votes strong {
+  color: var(--paper);
+}
+
+.profile-arena-lesson {
+  border-left: 2px solid var(--acid);
+  margin-top: 1.1rem;
+  padding-left: 0.8rem;
+}
+
+.profile-arena-lesson span {
+  color: var(--acid);
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.profile-arena-lesson p {
+  margin: 0.35rem 0 0;
+  color: var(--paper-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .spectator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .spectator-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .spectator-roster {
+    display: none;
+  }
+
+  .spectator-team-score {
+    max-width: 420px;
+  }
+
+  .profile-arena-heading {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .arena-room-actions {
+    gap: 0.35rem;
+  }
+
+  .arena-room-actions .arena-invite {
+    padding: 0.55rem 0.65rem;
+    font-size: 0.62rem;
+  }
+
+  .arena-clock {
+    grid-template-columns: 1fr auto;
+  }
+
+  .arena-clock > strong {
+    justify-self: end;
+  }
+
+  .arena-clock > small {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .arena-timer-options,
+  .spectator-teachback,
+  .profile-arena-list {
+    grid-template-columns: 1fr;
+  }
+
+  .spectator-topbar .spectator-live {
+    display: none;
+  }
+
+  .spectator-stage {
+    padding: 2rem 5vw 4rem;
+  }
+
+  .spectator-card > h1 {
+    font-size: clamp(2rem, 10vw, 4rem);
+  }
+
+  .profile-arena-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .profile-arena-stats article {
+    min-width: 0;
+  }
+
+  .profile-arena-meta {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 460px) {
+  .spectator-join {
+    padding: 0.58rem 0.65rem;
+    font-size: 0;
+  }
+
+  .spectator-join svg {
+    margin: 0;
+  }
+}
