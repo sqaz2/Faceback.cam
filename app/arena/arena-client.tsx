@@ -143,7 +143,7 @@ export function ArenaLobby() {
           <article className="arena-entry-card">
             <Users size={26} />
             <h2>Join a room</h2>
-            <p>Got an invite code? Drop in between rounds and join the current match.</p>
+            <p>Got an invite code? Drop in between rounds—no FACEBACK profile needed.</p>
             <div className="arena-code-entry">
               <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={ARENA_ROOM_CODE_LENGTH} placeholder="ABCD2345" aria-label="Room code" />
               <button onClick={joinRoom} disabled={busy}>Join</button>
@@ -159,7 +159,7 @@ export function ArenaLobby() {
             </article>
           ))}
         </div>
-        <p className="arena-vote-help">Arena names, revealed entries, results and winner breakdowns are public. Your email is never shown.</p>
+        <p className="arena-vote-help">No FACEBACK profile is required to join. Your ChatGPT display name appears in the Arena; your email is never shown.</p>
         {error && (
           <p className="arena-error">
             {error}{error.includes("FACEBACK profile") && <> <Link href="/studio">Create your profile</Link>.</>}
@@ -294,7 +294,7 @@ export function ArenaRoom({ code }: { code: string }) {
 
   if (!state.me) {
     return (
-      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You&apos;re not in this room yet.</h1><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}{error.includes("FACEBACK profile") && <> <Link href="/studio">Create your profile</Link>.</>}</p>}</section></main>
+      <main className="arena-shell"><section className="arena-landing"><p className="eyebrow">ROOM {code}</p><h1>You&apos;re not in this room yet.</h1><p>No FACEBACK profile needed. We&apos;ll use your ChatGPT display name.</p><button className="button button-primary" onClick={() => act("join")} disabled={busy}>Join room</button>{error && <p className="arena-error">{error}</p>}</section></main>
     );
   }
 

@@ -19,7 +19,7 @@ after(async () => {
 });
 
 test("Arena identity only accepts a published profile and never needs an email", async () => {
-  const { publicArenaIdentity } = await vite.ssrLoadModule("/app/arena/public-identity.ts");
+  const { arenaParticipantIdentity, publicArenaIdentity } = await vite.ssrLoadModule("/app/arena/public-identity.ts");
 
   assert.equal(publicArenaIdentity(null), null);
   assert.equal(
@@ -30,10 +30,31 @@ test("Arena identity only accepts a published profile and never needs an email",
     publicArenaIdentity({ id: 7, handle: "@Nova", displayName: "  Nova  ", published: 1 }),
     { profileId: 7, profileHandle: "nova", displayName: "Nova" },
   );
+  assert.deepEqual(
+    arenaParticipantIdentity(null, "  Invited Player  "),
+    { profileId: null, profileHandle: "", displayName: "Invited Player" },
+  );
+  assert.deepEqual(
+    arenaParticipantIdentity(
+      { id: 8, handle: "private", displayName: "Private", published: 0 },
+      "Guest Name",
+    ),
+    { profileId: null, profileHandle: "", displayName: "Guest Name" },
+  );
 
   const authSource = await readFile(path.join(root, "app/chatgpt-auth.ts"), "utf8");
   assert.doesNotMatch(authSource, /displayName:\s*fullName\s*\?\?\s*email/);
   assert.match(authSource, /displayName:\s*fullName\s*\?\?\s*["']FACEBACK Creator["']/);
+});
+
+test("Arena room and spectator queries include profile-free guests", async () => {
+  const roomSource = await readFile(path.join(root, "app/api/arena/room/route.ts"), "utf8");
+  const spectatorSource = await readFile(path.join(root, "app/api/arena/spectate/route.ts"), "utf8");
+
+  assert.match(roomSource, /arenaParticipantIdentity\([\s\S]*user\.displayName/);
+  assert.doesNotMatch(roomSource, /JOIN profiles pr ON pr\.id = p\.profile_id AND pr\.published = 1/);
+  assert.doesNotMatch(roomSource, /EXISTS \(SELECT 1 FROM profiles WHERE id = arena_players\.profile_id/);
+  assert.doesNotMatch(spectatorSource, /JOIN profiles pr ON pr\.id = p\.profile_id AND pr\.published = 1/);
 });
 
 test("all game modes and timer presets have valid, unique contracts", async () => {

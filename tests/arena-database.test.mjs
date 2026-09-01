@@ -50,6 +50,30 @@ test("Arena migrations apply cleanly and preserve referential integrity", async 
   }
 });
 
+test("Arena players can join without creating a FACEBACK profile", async () => {
+  const database = await migratedDatabase();
+  try {
+    database.exec(`
+      INSERT INTO arena_rooms (code, host_email) VALUES ('GUEST234', 'host@example.test');
+      INSERT INTO arena_players (room_id, user_email, display_name, profile_handle)
+      VALUES (1, 'guest@example.test', 'Invited Player', '');
+    `);
+
+    const guest = database.prepare(`
+      SELECT profile_id AS profileId, display_name AS displayName, profile_handle AS profileHandle
+      FROM arena_players WHERE user_email = 'guest@example.test'
+    `).get();
+    assert.deepEqual({ ...guest }, {
+      profileId: null,
+      displayName: "Invited Player",
+      profileHandle: "",
+    });
+    assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
+  } finally {
+    database.close();
+  }
+});
+
 test("integrity migration backfills existing Arena players without losing data", async () => {
   const database = await migratedDatabase("0005_arena_live_public.sql");
   try {

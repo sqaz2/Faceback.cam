@@ -21,7 +21,11 @@ import {
   type TeamId,
   type TimerPreset,
 } from "../../../arena/match-config";
-import { publicArenaIdentity, type ArenaPublicIdentity } from "../../../arena/public-identity";
+import {
+  arenaParticipantIdentity,
+  publicArenaIdentity,
+  type ArenaPublicIdentity,
+} from "../../../arena/public-identity";
 import {
   ARENA_ROOM_CODE_ALPHABET,
   ARENA_ROOM_CODE_LENGTH,
@@ -208,7 +212,10 @@ export async function POST(request: Request) {
       }
       const count = await playerCount(room.id);
       if (count >= room.maxPlayers) return Response.json({ error: "That room is full." }, { status: 409 });
-      const identity = requireArenaIdentity(await getOwnedProfile(user.email));
+      const identity = arenaParticipantIdentity(
+        (await getOwnedProfile(user.email)) ?? null,
+        user.displayName,
+      );
       const team = room.matchFormat === "TEAMS" ? await smallerTeam(room.id) : "";
       await addPlayer(room.id, user.email, identity, team);
       await ensureActiveHost(room.id);
@@ -248,9 +255,6 @@ export async function POST(request: Request) {
                (SELECT user_email FROM arena_players
                 WHERE room_id = ? AND active = 1
                   AND last_seen_at >= datetime('now', '-150 seconds')
-                  AND EXISTS (
-                    SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
-                  )
                 ORDER BY joined_at ASC, id ASC LIMIT 1),
                host_email
              ), updated_at = CURRENT_TIMESTAMP
@@ -535,10 +539,11 @@ async function roomState(code: string, email: string) {
 
   const playersResult = await db()
     .prepare(
-      `SELECT p.id, pr.display_name AS displayName, pr.handle AS profileHandle,
+      `SELECT p.id, p.display_name AS displayName,
+        CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.score, p.team
        FROM arena_players p
-       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
        WHERE p.room_id = ? AND p.active = 1
        ORDER BY p.score DESC, p.joined_at ASC`,
     )
@@ -682,10 +687,11 @@ async function getRoom(code: string) {
 async function getPlayer(roomId: number, email: string) {
   return db()
     .prepare(
-      `SELECT p.id, pr.display_name AS displayName, pr.handle AS profileHandle,
+      `SELECT p.id, p.display_name AS displayName,
+        CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.score, p.team
        FROM arena_players p
-       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
        WHERE p.room_id = ? AND p.user_email = ? AND p.active = 1 LIMIT 1`,
     )
     .bind(roomId, email)
@@ -719,17 +725,11 @@ async function ensureActiveHost(roomId: number) {
          SELECT user_email FROM arena_players
          WHERE room_id = ? AND active = 1
            AND last_seen_at >= datetime('now', '-150 seconds')
-           AND EXISTS (
-             SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
-           )
          ORDER BY joined_at ASC, id ASC LIMIT 1
        ), updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND NOT EXISTS (
          SELECT 1 FROM arena_players
          WHERE room_id = ? AND user_email = arena_rooms.host_email AND active = 1
-           AND EXISTS (
-             SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
-           )
        )`,
     )
     .bind(roomId, roomId, roomId)
@@ -744,9 +744,6 @@ async function ensureResponsiveHost(roomId: number) {
          SELECT user_email FROM arena_players
          WHERE room_id = ? AND active = 1
            AND last_seen_at >= datetime('now', '-150 seconds')
-           AND EXISTS (
-             SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
-           )
          ORDER BY joined_at ASC, id ASC LIMIT 1
        ), updated_at = CURRENT_TIMESTAMP
        WHERE id = ?
@@ -754,17 +751,11 @@ async function ensureResponsiveHost(roomId: number) {
            SELECT 1 FROM arena_players
            WHERE room_id = ? AND active = 1
              AND last_seen_at >= datetime('now', '-150 seconds')
-             AND EXISTS (
-               SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
-             )
          )
          AND NOT EXISTS (
            SELECT 1 FROM arena_players
            WHERE room_id = ? AND user_email = arena_rooms.host_email AND active = 1
              AND last_seen_at >= datetime('now', '-150 seconds')
-             AND EXISTS (
-               SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1
-             )
          )`,
     )
     .bind(roomId, roomId, roomId, roomId)
@@ -789,7 +780,7 @@ async function submissionRows(roundId: number) {
   const result = await db()
     .prepare(
       `SELECT s.id, s.player_id AS playerId, s.content,
-        COALESCE(NULLIF(pr.display_name, ''), 'FACEBACK Creator') AS authorName,
+        COALESCE(NULLIF(p.display_name, ''), 'FACEBACK Guest') AS authorName,
         CASE WHEN pr.published = 1 THEN pr.handle ELSE '' END AS profileHandle,
         p.team AS team, COUNT(v.id) AS voteCount
        FROM arena_submissions s
@@ -797,7 +788,7 @@ async function submissionRows(roundId: number) {
        LEFT JOIN profiles pr ON pr.id = p.profile_id
        LEFT JOIN arena_votes v ON v.submission_id = s.id
        WHERE s.round_id = ?
-       GROUP BY s.id, s.player_id, s.content, pr.display_name, pr.handle, pr.published, p.team
+       GROUP BY s.id, s.player_id, s.content, p.display_name, pr.handle, pr.published, p.team
        ORDER BY s.id ASC`,
     )
     .bind(roundId)
@@ -834,7 +825,6 @@ async function playerCount(roomId: number) {
     .prepare(
       `SELECT COUNT(*) AS count
        FROM arena_players p
-       JOIN profiles pr ON pr.id = p.profile_id AND pr.published = 1
        WHERE p.room_id = ? AND p.active = 1`,
     )
     .bind(roomId)
@@ -863,7 +853,6 @@ async function smallerTeam(roomId: number): Promise<TeamId> {
     .prepare(
       `SELECT team, COUNT(*) AS count FROM arena_players
        WHERE room_id = ? AND active = 1 AND team IN (?, ?)
-         AND EXISTS (SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1)
        GROUP BY team`,
     )
     .bind(roomId, TEAM_SIGNAL, TEAM_STATIC)
@@ -881,7 +870,6 @@ async function matchTeamStatements(roomId: number, matchFormat: MatchFormat, mat
     .prepare(
       `SELECT id FROM arena_players
        WHERE room_id = ? AND active = 1
-         AND EXISTS (SELECT 1 FROM profiles WHERE id = arena_players.profile_id AND published = 1)
        ORDER BY joined_at ASC, id ASC`,
     )
     .bind(roomId)

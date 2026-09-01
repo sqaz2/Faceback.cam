@@ -6,7 +6,7 @@ export type ArenaProfileIdentity = {
 };
 
 export type ArenaPublicIdentity = {
-  profileId: number;
+  profileId: number | null;
   profileHandle: string;
   displayName: string;
 };
@@ -22,5 +22,19 @@ export function publicArenaIdentity(profile: ArenaProfileIdentity | null): Arena
     profileId: profile.id,
     profileHandle,
     displayName,
+  };
+}
+
+export function arenaParticipantIdentity(
+  profile: ArenaProfileIdentity | null,
+  fallbackDisplayName: string,
+): ArenaPublicIdentity {
+  const profileIdentity = publicArenaIdentity(profile);
+  if (profileIdentity) return profileIdentity;
+
+  return {
+    profileId: null,
+    profileHandle: "",
+    displayName: fallbackDisplayName.trim().slice(0, 70) || "FACEBACK Guest",
   };
 }
