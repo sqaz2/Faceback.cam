@@ -6,7 +6,7 @@ import {
   HAIR_COLORS,
   SKINS,
 } from "./data";
-import type { Actor, Appearance, PlacedItem, RoomDef } from "./types";
+import type { Actor, Appearance, PlacedItem, RoomDef, Dir } from "./types";
 import { TILE_H, TILE_W, seatLiftPx, tileToScreen, world } from "./world";
 
 export type SpriteMap = Record<string, HTMLImageElement>;
@@ -504,7 +504,7 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
   } else if (acc === "Cans" && sheetReady(sh.acc)) {
     const cw = sh.acc.naturalWidth / 2;
     const ch = sh.acc.naturalHeight / 2;
-    tintDraw(ctx, sh.acc, cw, 0, cw, ch, hx - 28, hy - 12, 56, 30, null);
+    tintDraw(ctx, sh.acc, cw, 0, cw, ch, hx - 16, hy - 16, 32, 24, null);
   } else if (acc === "Shades") {
     ctx.fillStyle = "#1a1012";
     ctx.fillRect(hx - 13, hy - 1, 26, 6);
@@ -1215,6 +1215,7 @@ export function renderAvatarPreview(
   appearance: Appearance,
   t: number,
   action: Actor["action"] = "idle",
+  direction?: Dir,
 ) {
   ensureAvatarSheets();
   const ctx = canvas.getContext("2d");
@@ -1230,7 +1231,7 @@ export function renderAvatarPreview(
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = "#1f1013";
   ctx.fillRect(0, 0, w, h);
-  const dir = (Math.floor(t / 1.8) % 4) as 0 | 1 | 2 | 3;
+  const dir = direction ?? (Math.floor(t / 1.8) % 4) as 0 | 1 | 2 | 3;
   ctx.save();
   ctx.translate(w / 2, h * 0.72);
   ctx.scale(2.8, 2.8);

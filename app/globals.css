@@ -72,7 +72,13 @@ select {
   color: #f4e8dc;
 }
 
-.coke-place-game { height: 100dvh; }
+.coke-place-game { height: 100%; }
+.coke-place-shell { padding-top: calc(64px + env(safe-area-inset-top)); }
+.coke-screen-create, .coke-screen-splash { overflow-y: auto; overscroll-behavior-y: contain; }
+.coke-screen-create .coke-place-game, .coke-screen-splash .coke-place-game { height: auto; }
+.coke-place-game .h-dvh { height: calc(100dvh - 64px - env(safe-area-inset-top)); }
+.coke-place-game .min-h-dvh { min-height: calc(100dvh - 64px - env(safe-area-inset-top)); }
+.coke-creator-actions { position: sticky; bottom: 0; padding: 12px 0 max(12px, env(safe-area-inset-bottom)); background: #14080a; z-index: 2; }
 
 .coke-place-bar {
   position: fixed;

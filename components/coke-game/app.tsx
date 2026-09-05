@@ -17,12 +17,13 @@ import {
   SKINS,
   TOP_STYLES,
 } from "@/lib/coke-game/data";
-import { renderAvatarPreview } from "@/lib/coke-game/draw";
+import { AvatarPreview } from "./avatar-preview";
 import { sfxClick, sfxCoin, unlockAudio } from "@/lib/coke-game/audio";
 import { useGame } from "@/lib/coke-game/store";
 import { world } from "@/lib/coke-game/world";
 import { cn } from "@/lib/utils";
 import type { Appearance } from "@/lib/coke-game/types";
+import { OutfitTools } from "./outfit-tools";
 
 export function CokeMusicApp() {
   const hydrate = useGame((s) => s.hydrate);
@@ -100,24 +101,12 @@ function Splash() {
 }
 
 function CreateVego() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const name = useGame((s) => s.name);
   const setName = useGame((s) => s.setName);
   const appearance = useGame((s) => s.appearance);
   const setAppearance = useGame((s) => s.setAppearance);
   const enter = useGame((s) => s.enter);
 
-  useEffect(() => {
-    let raf = 0;
-    const t0 = performance.now();
-    const loop = (now: number) => {
-      const t = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (now - t0) / 1000;
-      if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "idle");
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [appearance]);
 
   const patch = (p: Partial<Appearance>) => setAppearance({ ...appearance, ...p });
 
@@ -128,10 +117,7 @@ function CreateVego() {
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foam">First impressions</h1>
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]">
-        <canvas
-          ref={canvasRef}
-          className="h-72 w-full rounded-[24px] border border-border bg-ink-soft sm:h-80"
-        />
+        <AvatarPreview appearance={appearance} />
         <div className="flex flex-col gap-4">
           <label className="block">
             <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Name</span>
@@ -190,7 +176,8 @@ function CreateVego() {
               </Chip>
             ))}
           </Row>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <OutfitTools />
+          <div className="coke-creator-actions mt-2 flex flex-wrap gap-2">
             <Button
               variant="ink"
               onClick={() => {
@@ -209,7 +196,7 @@ function CreateVego() {
                 enter("red-room");
               }}
             >
-              Walk in
+              Enter room
             </Button>
           </div>
         </div>
@@ -410,19 +397,6 @@ function Wardrobe() {
   const setAppearance = useGame((s) => s.setAppearance);
   const setOverlay = useGame((s) => s.setOverlay);
   const persist = useGame((s) => s.persist);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    let raf = 0;
-    const t0 = performance.now();
-    const loop = (now: number) => {
-      const t = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (now - t0) / 1000;
-      if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "dance");
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [appearance]);
 
   const patch = (p: Partial<Appearance>) => {
     setAppearance({ ...appearance, ...p });
@@ -440,7 +414,7 @@ function Wardrobe() {
           Close
         </Button>
       </div>
-      <canvas ref={canvasRef} className="mt-3 h-48 w-full rounded-[20px] border border-border bg-ink" />
+      <AvatarPreview appearance={appearance} />
       <div className="mt-4 flex flex-col gap-3">
         <Swatch values={SKINS} value={appearance.skin} onPick={(i) => patch({ skin: i })} label="Skin" />
         <Row label="Hair">
@@ -475,6 +449,7 @@ function Wardrobe() {
             </Chip>
           ))}
         </Row>
+        <OutfitTools />
       </div>
     </div>
   );
