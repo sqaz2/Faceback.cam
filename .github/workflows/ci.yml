@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  validate:
+  validate-faceback:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -35,3 +35,35 @@ jobs:
 
       - name: Build and test
         run: npm test
+
+  validate-coke-music:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: coke-music
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: coke-music/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build:dev

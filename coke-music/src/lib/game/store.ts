@@ -1,11 +1,51 @@
 import { create } from "zustand";
-import { DEFAULT_APPEARANCE } from "./data";
+import { CATALOG_MAP, DEFAULT_APPEARANCE, ROOM_MAP } from "./data";
 import type { Appearance, ChatLine, Mix, Overlay, PlacedItem, Screen } from "./types";
-import { bindWorld, enterRoom, setPlayerLook, studioFurniture } from "./world";
+import { bindWorld, enterRoom, placeAt, setPlayerLook, studioFurniture } from "./world";
 import { startLounge, unlockAudio } from "./audio";
 
 const KEY = "coke-music-v1";
 const VERSION = 1;
+
+const APPEARANCE_FIELDS: (keyof Appearance)[] = [
+  "skin",
+  "hair",
+  "hairColor",
+  "top",
+  "topColor",
+  "bottom",
+  "bottomColor",
+  "shoeColor",
+  "accessory",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAppearance(value: unknown): value is Appearance {
+  return isRecord(value) && APPEARANCE_FIELDS.every((field) => Number.isInteger(value[field]));
+}
+
+function isPlacedItem(value: unknown): value is PlacedItem {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.catalogId === "string"
+    && Boolean(CATALOG_MAP[value.catalogId])
+    && Number.isInteger(value.x)
+    && Number.isInteger(value.y);
+}
+
+function isMix(value: unknown): value is Mix {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.name === "string"
+    && typeof value.genre === "string"
+    && Number.isFinite(value.createdAt)
+    && Array.isArray(value.clips)
+    && value.clips.length === 4
+    && value.clips.every((clip) => clip === null || typeof clip === "string");
+}
 
 interface Save {
   version: number;
@@ -17,6 +57,19 @@ interface Save {
   studio: PlacedItem[];
   lastRoom: string;
   seenHelp: boolean;
+}
+
+function isSave(value: unknown): value is Save {
+  if (!isRecord(value) || value.version !== VERSION) return false;
+  if (typeof value.name !== "string" || value.name.length > 16) return false;
+  if (!isAppearance(value.appearance)) return false;
+  if (!Number.isFinite(value.db) || Number(value.db) < 0) return false;
+  if (!isRecord(value.inventory)) return false;
+  if (!Object.values(value.inventory).every((count) => Number.isInteger(count) && Number(count) >= 0)) return false;
+  if (!Array.isArray(value.discs) || !value.discs.every(isMix)) return false;
+  if (!Array.isArray(value.studio) || !value.studio.every(isPlacedItem)) return false;
+  if (typeof value.lastRoom !== "string" || !ROOM_MAP[value.lastRoom]) return false;
+  return typeof value.seenHelp === "boolean";
 }
 
 interface GameState {
@@ -46,6 +99,7 @@ interface GameState {
   buy: (id: string, price: number) => boolean;
   grantItem: (id: string) => void;
   spendItem: (id: string) => boolean;
+  placeOwnedItem: (id: string, x: number, y: number) => boolean;
   addDisc: (m: Mix) => void;
   setPlacing: (id: string | null) => void;
   setStudio: (f: PlacedItem[]) => void;
@@ -84,8 +138,8 @@ function load(): Save | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
-    const s = JSON.parse(raw) as Save;
-    if (!s || s.version !== VERSION) return null;
+    const s: unknown = JSON.parse(raw);
+    if (!isSave(s)) return null;
     return s;
   } catch {
     return null;
@@ -179,6 +233,18 @@ export const useGame = create<GameState>((set, get) => ({
     if (n <= 0) return false;
     const next = { ...s.inventory, [id]: n - 1 };
     set({ inventory: next });
+    get().persist();
+    return true;
+  },
+  placeOwnedItem: (id, x, y) => {
+    const s = get();
+    const count = s.inventory[id] ?? 0;
+    if (count <= 0 || !placeAt(id, x, y)) return false;
+    set({
+      inventory: { ...s.inventory, [id]: count - 1 },
+      studio: [...studioFurniture()],
+      placing: count === 1 ? null : s.placing,
+    });
     get().persist();
     return true;
   },
