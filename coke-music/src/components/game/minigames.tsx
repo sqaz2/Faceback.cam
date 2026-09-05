@@ -26,7 +26,6 @@ export function VegaSan() {
     if (over) return;
     sfxClick();
     // The opponent's choice is intentionally randomized when the player acts.
-    // eslint-disable-next-line react-hooks/purity
     const b = RPS[Math.floor(Math.random() * 3)]!;
     let r = "tie";
     let y = you;
@@ -128,7 +127,6 @@ export function UncoverMusic() {
   const setToast = useGame((s) => s.setToast);
   const deck = useMemo(() => {
     // A fresh board is intentionally shuffled once when this game mounts.
-    // eslint-disable-next-line react-hooks/purity
     const d = [...PAIRS, ...PAIRS].sort(() => Math.random() - 0.5);
     return d;
   }, []);
