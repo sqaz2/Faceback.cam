@@ -5,12 +5,13 @@ import {
   Map,
   Mic2,
   Music2,
+  PackageOpen,
   Shirt,
   Volume2,
   VolumeX,
   Hand,
 } from "lucide-react";
-import { useEffect, useRef, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { SPRITE_URLS } from "@/lib/game/data";
 import { renderWorld, type SpriteMap } from "@/lib/game/draw";
@@ -65,6 +66,7 @@ export function WorldView() {
   const chat = useGame((s) => s.chat);
   const roomName = world.room.name;
   const inputRef = useRef<HTMLInputElement>(null);
+  const [packing, setPacking] = useState(false);
 
   useEffect(() => {
     sprites.current = loadSprites();
@@ -131,6 +133,21 @@ export function WorldView() {
         onPointerDown={(e) => {
           unlockAudio();
           const p = toWorld(e);
+          if (packing) {
+            const tx = Math.floor(p.x / TILE_W + p.y / TILE_H);
+            const ty = Math.floor(p.y / TILE_H - p.x / TILE_W);
+            const id = pickupAt(tx, ty);
+            if (id) {
+              grantItem(id);
+              setStudio(studioFurniture());
+              setToast("Packed up.");
+              sfxClick();
+              setPacking(false);
+            } else {
+              setToast("Tap a furniture item to pack it.");
+            }
+            return;
+          }
           if (placing) {
             const available = inventory[placing] ?? 0;
             if (available <= 0) {
@@ -176,13 +193,16 @@ export function WorldView() {
         </div>
       </header>
 
-      {placing && (
-        <div className="absolute left-1/2 top-16 z-10 -translate-x-1/2 rounded-full border border-border bg-ink/85 px-4 py-2 text-sm text-cream backdrop-blur-sm">
-          Tap a tile to place · right-click to pack
+      {(placing || packing) && (
+        <div className="absolute left-1/2 top-16 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center rounded-full border border-border bg-ink/85 px-4 py-2 text-sm text-cream backdrop-blur-sm">
+          {packing ? "Tap furniture to pack it" : "Tap a tile to place"}
           <button
             type="button"
             className="ml-3 text-coke"
-            onClick={() => setPlacing(null)}
+            onClick={() => {
+              setPlacing(null);
+              setPacking(false);
+            }}
           >
             Cancel
           </button>
@@ -243,6 +263,17 @@ export function WorldView() {
           <IconBtn label="Shop" onClick={() => setOverlay("catalog")}>
             <Armchair className="size-5" />
           </IconBtn>
+          {world.room.private && (
+            <IconBtn
+              label={packing ? "Cancel" : "Pack"}
+              onClick={() => {
+                setPlacing(null);
+                setPacking((value) => !value);
+              }}
+            >
+              <PackageOpen className="size-5" />
+            </IconBtn>
+          )}
           <IconBtn label="Look" onClick={() => setOverlay("wardrobe")}>
             <Shirt className="size-5" />
           </IconBtn>
