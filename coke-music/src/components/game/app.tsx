@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from "react";
-import { Dices, MapPin } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Dices, MapPin, RotateCw } from "lucide-react";
 import { Button } from "@/components/game/button";
 import { MixerPanel } from "@/components/game/mixer-panel";
 import { UncoverMusic, VegaSan } from "@/components/game/minigames";
@@ -9,7 +9,8 @@ import {
   ACCESSORIES,
   BODY_STYLES,
   BOTTOM_STYLES,
-  CATALOG,
+  CATALOG_SECTIONS,
+  catalogBySection,
   CLOTH_COLORS,
   HAIR_COLORS,
   HAIR_STYLES,
@@ -17,6 +18,7 @@ import {
   ROOMS,
   SHOE_STYLES,
   SKINS,
+  SPRITE_URLS,
   TOP_STYLES,
 } from "@/lib/game/data";
 import { AvatarPreview } from "./avatar-preview";
@@ -346,10 +348,21 @@ function Catalog() {
   const setOverlay = useGame((s) => s.setOverlay);
   const setToast = useGame((s) => s.setToast);
   const inStudio = world.room.private;
+  const [previewRot, setPreviewRot] = useState<Record<string, number>>({});
+  const sections = catalogBySection();
+
+  const cyclePreview = (id: string, mode: "90" | "360") => {
+    const steps = mode === "360" ? 8 : 4;
+    setPreviewRot((prev) => ({ ...prev, [id]: ((prev[id] ?? 0) + 1) % steps }));
+  };
+
+  const scrollToSection = (id: string) => {
+    document.getElementById(`catalog-aisle-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex items-start justify-between">
+    <div className="flex max-h-[min(80dvh,40rem)] flex-col p-4 sm:p-6">
+      <div className="flex shrink-0 items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Catalog</p>
           <h2 className="mt-1 text-2xl font-semibold text-foam">Furnish the lounge</h2>
@@ -358,52 +371,112 @@ function Catalog() {
           Close
         </Button>
       </div>
-      <p className="mt-1 text-sm tabular-nums text-muted">{db} dB · owned items can be placed in My Studio</p>
-      <ul className="mt-4 grid gap-2">
-        {CATALOG.map((c) => {
-          const owned = inventory[c.id] ?? 0;
-          return (
-            <li
-              key={c.id}
-              className="flex items-center gap-3 rounded-[16px] border border-border bg-ink-mid px-3 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foam">{c.name}</p>
-                <p className="text-xs text-muted">{c.desc}</p>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <Button
-                  size="sm"
-                  variant={db >= c.price ? "primary" : "ink"}
-                  onClick={() => {
-                    if (buy(c.id, c.price)) {
-                      sfxCoin();
-                      setToast(`Bought ${c.name}`);
-                    } else setToast("Not enough decibels.");
-                  }}
-                >
-                  {c.price} dB
-                </Button>
-                {owned > 0 && (
-                  <button
-                    type="button"
-                    className="text-[11px] text-cream/80 hover:text-foam"
-                    onClick={() => {
-                      if (!inStudio) {
-                        setToast("Place furniture in My Studio.");
-                        return;
-                      }
-                      setPlacing(c.id);
-                    }}
+      <p className="mt-1 shrink-0 text-sm tabular-nums text-muted">{db} dB · owned items can be placed in My Studio</p>
+
+      <div className="sticky top-0 z-10 -mx-1 mt-3 flex shrink-0 gap-1.5 overflow-x-auto bg-ink/95 px-1 py-2 backdrop-blur-sm">
+        {CATALOG_SECTIONS.map((sec) => (
+          <button
+            key={sec.id}
+            type="button"
+            onClick={() => scrollToSection(sec.id)}
+            className="shrink-0 rounded-full border border-border bg-ink-mid px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-cream/90 hover:border-coke hover:text-foam"
+          >
+            {sec.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+        {sections.map(({ section, items }) => (
+          <section key={section.id} id={`catalog-aisle-${section.id}`}>
+            <div className="mb-2 border-b border-border/80 pb-1.5">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-foam">{section.label}</h3>
+              {section.blurb && <p className="text-[11px] text-muted">{section.blurb}</p>}
+            </div>
+            <ul className="grid gap-2">
+              {items.map((c) => {
+                const owned = inventory[c.id] ?? 0;
+                const rot = previewRot[c.id] ?? 0;
+                const steps = c.rotate === "360" ? 8 : 4;
+                const deg = c.rotate ? rot * (360 / steps) : 0;
+                const thumb = c.sprite ? SPRITE_URLS[c.sprite] : undefined;
+                return (
+                  <li
+                    key={c.id}
+                    className="flex items-center gap-3 rounded-[16px] border border-border bg-ink-mid px-3 py-3"
                   >
-                    Place · {owned}
-                  </button>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[12px] border border-border/60 bg-ink sm:h-20 sm:w-20">
+                      {thumb ? (
+                        <img
+                          src={thumb}
+                          alt=""
+                          className="h-full w-full object-contain p-1 transition-transform duration-200"
+                          style={{ transform: deg ? `rotate(${deg}deg)` : undefined }}
+                          draggable={false}
+                        />
+                      ) : (
+                        <div
+                          className="flex h-full w-full items-center justify-center bg-[radial-gradient(ellipse_at_center,#6e0a12_0%,#2a1216_70%)] transition-transform duration-200"
+                          style={{ transform: deg ? `rotate(${deg}deg)` : undefined }}
+                          aria-hidden
+                        >
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-cream/70">Rug</span>
+                        </div>
+                      )}
+                      {c.rotate && (
+                        <button
+                          type="button"
+                          title="Rotate preview"
+                          className="absolute bottom-0.5 right-0.5 flex size-6 items-center justify-center rounded-full border border-border bg-ink/90 text-cream hover:text-foam"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            cyclePreview(c.id, c.rotate!);
+                          }}
+                        >
+                          <RotateCw className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foam">{c.name}</p>
+                      <p className="text-xs text-muted">{c.desc}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Button
+                        size="sm"
+                        variant={db >= c.price ? "primary" : "ink"}
+                        onClick={() => {
+                          if (buy(c.id, c.price)) {
+                            sfxCoin();
+                            setToast(`Bought ${c.name}`);
+                          } else setToast("Not enough decibels.");
+                        }}
+                      >
+                        {c.price} dB
+                      </Button>
+                      {owned > 0 && (
+                        <button
+                          type="button"
+                          className="text-[11px] text-cream/80 hover:text-foam"
+                          onClick={() => {
+                            if (!inStudio) {
+                              setToast("Place furniture in My Studio.");
+                              return;
+                            }
+                            setPlacing(c.id);
+                          }}
+                        >
+                          Place · {owned}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

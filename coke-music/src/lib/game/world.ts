@@ -19,6 +19,7 @@ export interface World {
   performUntil: number;
   drinkCd: number;
   pendingUse: { kind: "sit" | "drink" | "music" | "stage"; id: string; slot?: number } | null;
+  selectedFurnId: string | null;
   blocked: Set<string>;
 }
 
@@ -35,6 +36,7 @@ export const world: World = {
   performUntil: 0,
   drinkCd: 0,
   pendingUse: null,
+  selectedFurnId: null,
   blocked: new Set(),
 };
 
@@ -80,8 +82,8 @@ export function seatCount(cat: { sit?: boolean; seats?: number } | undefined): n
 export function seatWorldPos(f: PlacedItem, slot: number): { x: number; y: number } {
   const cat = CATALOG_MAP[f.catalogId];
   const n = Math.max(1, seatCount(cat));
-  const w = cat?.w ?? 1;
-  const d = cat?.d ?? 1;
+  const { w, d } = cat ? effectiveFootprint(cat, f.rot ?? 0) : { w: 1, d: 1 };
+  const q = footprintQuarter(cat, f.rot ?? 0);
   // Same origin the furniture sprite is drawn from, so seats line up with cushions.
   const cx = f.x + (w - 1) * 0.5;
   const cy = f.y + (d - 1) * 0.5;
@@ -89,6 +91,13 @@ export function seatWorldPos(f: PlacedItem, slot: number): { x: number; y: numbe
   const depth = cat?.sitY ?? 0.12;
   const spreadAmt = cat?.sitSpread ?? (n <= 1 ? 0 : w * 0.5);
   const spread = n <= 1 ? 0 : ((slot - (n - 1) / 2) / Math.max(1, n - 1)) * spreadAmt;
+  // When footprint is swapped (90° / 270°), seat spread follows the long axis.
+  if (q % 2 === 1) {
+    return {
+      x: cx + depth - spread * 0.5,
+      y: cy + depth + spread * 0.5,
+    };
+  }
   return {
     x: cx + depth + spread * 0.5,
     y: cy + depth - spread * 0.5,
@@ -98,6 +107,37 @@ export function seatWorldPos(f: PlacedItem, slot: number): { x: number; y: numbe
 export function seatLiftPx(f: PlacedItem | undefined): number {
   if (!f) return 0;
   return CATALOG_MAP[f.catalogId]?.sitLift ?? 8;
+}
+
+export function rotSteps(cat: { rotate?: "90" | "360" } | undefined): number {
+  return cat?.rotate === "360" ? 8 : 4;
+}
+
+/** Nearest 90° quarter-turn used for footprint / blocking. */
+export function footprintQuarter(cat: { rotate?: "90" | "360" } | undefined, rot = 0): number {
+  if (cat?.rotate === "360") return Math.round(rot / 2) % 4;
+  return ((rot % 4) + 4) % 4;
+}
+
+export function effectiveFootprint(
+  cat: { w: number; d: number; rotate?: "90" | "360" },
+  rot = 0,
+): { w: number; d: number } {
+  const q = footprintQuarter(cat, rot);
+  if (q % 2 === 1) return { w: cat.d, d: cat.w };
+  return { w: cat.w, d: cat.d };
+}
+
+export function itemFootprint(f: PlacedItem): { w: number; d: number } {
+  const cat = CATALOG_MAP[f.catalogId];
+  if (!cat) return { w: 1, d: 1 };
+  return effectiveFootprint(cat, f.rot ?? 0);
+}
+
+export function rotDegrees(cat: { rotate?: "90" | "360" } | undefined, rot = 0): number {
+  if (!cat?.rotate && !rot) return 0;
+  const steps = rotSteps(cat?.rotate ? cat : { rotate: "90" });
+  return (((rot % steps) + steps) % steps) * (360 / steps);
 }
 
 function occupiedSlots(furnId: string, ignoreId?: string): Set<number> {
@@ -121,7 +161,7 @@ function slotFromTile(f: PlacedItem, tx: number): number {
   const cat = CATALOG_MAP[f.catalogId];
   const n = seatCount(cat);
   if (n <= 1) return 0;
-  const w = cat?.w ?? 1;
+  const w = cat ? effectiveFootprint(cat, f.rot ?? 0).w : 1;
   return Math.min(n - 1, Math.max(0, Math.floor(((tx - f.x) / w) * n)));
 }
 
@@ -163,8 +203,9 @@ function rebuildBlocked() {
   for (const f of world.furniture) {
     const cat = CATALOG_MAP[f.catalogId];
     if (!cat || cat.floor || cat.hang || cat.block === false) continue;
-    for (let x = f.x; x < f.x + cat.w; x++) {
-      for (let y = f.y; y < f.y + cat.d; y++) set.add(k(x, y));
+    const { w, d } = effectiveFootprint(cat, f.rot ?? 0);
+    for (let x = f.x; x < f.x + w; x++) {
+      for (let y = f.y; y < f.y + d; y++) set.add(k(x, y));
     }
   }
   world.blocked = set;
@@ -176,11 +217,71 @@ export function walkable(x: number, y: number) {
   return !world.blocked.has(k(x, y));
 }
 
+/** Standing/walking actors block their floor tile; sitters use furniture blocked set. */
+function tileTakenByActor(tx: number, ty: number, exceptId?: string): boolean {
+  for (const a of world.actors) {
+    if (exceptId && a.id === exceptId) continue;
+    if (a.action === "sit") continue;
+    if (Math.floor(a.x) === tx && Math.floor(a.y) === ty) return true;
+  }
+  return false;
+}
+
+function walkableFor(actorId: string) {
+  return (x: number, y: number) => walkable(x, y) && !tileTakenByActor(x, y, actorId);
+}
+
+function shuffleDirs(): { x: number; y: number }[] {
+  const dirs = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ];
+  for (let i = dirs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = dirs[i]!;
+    dirs[i] = dirs[j]!;
+    dirs[j] = tmp;
+  }
+  return dirs;
+}
+
+function deflectActor(a: Actor) {
+  a.path = [];
+  const cx = Math.floor(a.x);
+  const cy = Math.floor(a.y);
+  const can = walkableFor(a.id);
+  for (const d of shuffleDirs()) {
+    const nx = cx + d.x;
+    const ny = cy + d.y;
+    if (can(nx, ny)) {
+      a.path = [{ x: nx, y: ny }];
+      a.action = "walk";
+      if (a.isPlayer) {
+        world.pendingUse = null;
+        onToast?.("Path busy — stepping aside.");
+      } else {
+        a.pendingSit = undefined;
+      }
+      return;
+    }
+  }
+  a.action = "idle";
+  if (a.isPlayer) {
+    world.pendingUse = null;
+    onToast?.("That way is blocked.");
+  } else {
+    a.pendingSit = undefined;
+  }
+}
+
 function furnitureAt(x: number, y: number): PlacedItem | undefined {
   return world.furniture.find((f) => {
     const cat = CATALOG_MAP[f.catalogId];
     if (!cat) return false;
-    return x >= f.x && x < f.x + cat.w && y >= f.y && y < f.y + cat.d;
+    const { w, d } = effectiveFootprint(cat, f.rot ?? 0);
+    return x >= f.x && x < f.x + w && y >= f.y && y < f.y + d;
   });
 }
 
@@ -215,8 +316,9 @@ function standFromSeat(actor: Actor) {
   actor.sitSlot = undefined;
   actor.pendingSit = undefined;
   if (actor.action === "sit") actor.action = "idle";
-  const gx = f ? f.x + Math.floor((CATALOG_MAP[f.catalogId]?.w ?? 1) / 2) : Math.floor(actor.x);
-  const gy = f ? f.y + (CATALOG_MAP[f.catalogId]?.d ?? 1) : Math.floor(actor.y) + 1;
+  const fp = f ? itemFootprint(f) : { w: 1, d: 1 };
+  const gx = f ? f.x + Math.floor(fp.w / 2) : Math.floor(actor.x);
+  const gy = f ? f.y + fp.d : Math.floor(actor.y) + 1;
   const n = nearestWalkable(gx, gy, walkable, world.room.w, world.room.h);
   if (n) {
     actor.x = n.x + 0.5;
@@ -231,6 +333,7 @@ export function enterRoom(roomId: string, studioItems?: PlacedItem[]) {
   world.room = def;
   world.performing = false;
   world.pendingUse = null;
+  world.selectedFurnId = null;
   world.particles = [];
   doubleDb = def.doubleDb;
   const base: PlacedItem[] = def.private
@@ -364,14 +467,15 @@ export function playerSay(text: string) {
 
 function walkTo(actor: Actor, tx: number, ty: number) {
   if (actor.action === "sit" || actor.sitId) standFromSeat(actor);
+  const can = walkableFor(actor.id);
   let start = { x: Math.floor(actor.x), y: Math.floor(actor.y) };
-  if (!walkable(start.x, start.y)) {
-    const n = nearestWalkable(start.x, start.y, walkable, world.room.w, world.room.h);
+  if (!can(start.x, start.y)) {
+    const n = nearestWalkable(start.x, start.y, can, world.room.w, world.room.h);
     if (n) start = n;
   }
-  const goal = nearestWalkable(tx, ty, walkable, world.room.w, world.room.h);
+  const goal = nearestWalkable(tx, ty, can, world.room.w, world.room.h);
   if (!goal) return false;
-  const path = astar(start, goal, walkable, world.room.w, world.room.h);
+  const path = astar(start, goal, can, world.room.w, world.room.h);
   if (!path) return false;
   actor.path = path;
   actor.sitId = undefined;
@@ -384,6 +488,7 @@ export function movePlayerBy(dx: number, dy: number): boolean {
   const p = player();
   if (!p) return false;
   world.pendingUse = null;
+  world.selectedFurnId = null;
   return walkTo(p, Math.floor(p.x) + dx, Math.floor(p.y) + dy);
 }
 
@@ -407,65 +512,106 @@ export function clickWorld(sx: number, sy: number, placing?: string | null) {
   const furn = furnitureAt(t.x, t.y);
   const furnCat = furn ? CATALOG_MAP[furn.catalogId] : undefined;
 
-  // Drink / jukebox / stage on the exact tile win over nearby-sit.
-  if (furn && furnCat && !furnCat.sit) {
-    if (furnCat.drink) {
-      world.pendingUse = { kind: "drink", id: furn.id };
-      const adj = nearestWalkable(t.x, t.y, walkable, world.room.w, world.room.h);
-      if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
-      return { placed: false };
+  // Click furniture → select + walk adjacent. Use button performs the action.
+  if (furn || sitF) {
+    let target = furn ?? sitF!;
+    if (furn && furnCat && !furnCat.sit && (furnCat.drink || furnCat.music || furnCat.stage)) {
+      target = furn;
+    } else if (sitF) {
+      target = sitF;
     }
-    if (furnCat.music) {
-      world.pendingUse = { kind: "music", id: furn.id };
-      const adj = nearestWalkable(t.x, t.y, walkable, world.room.w, world.room.h);
-      if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
-      return { placed: false };
+    world.selectedFurnId = target.id;
+    world.pendingUse = null;
+    const cat = CATALOG_MAP[target.catalogId];
+    const can = walkableFor(p.id);
+    let adj: { x: number; y: number } | null = null;
+    if (cat?.sit) {
+      const prefer = slotFromTile(target, t.x);
+      const slot = freeSlot(target, prefer, p.id);
+      const pos = slot != null ? seatWorldPos(target, slot) : { x: target.x + 0.5, y: target.y + 0.5 };
+      adj =
+        nearestWalkable(Math.floor(pos.x), Math.floor(pos.y) + 1, can, world.room.w, world.room.h) ??
+        nearestWalkable(Math.floor(pos.x), Math.floor(pos.y), can, world.room.w, world.room.h);
+    } else {
+      adj = nearestWalkable(t.x, t.y, can, world.room.w, world.room.h);
     }
-    if (furnCat.stage) {
-      world.pendingUse = { kind: "stage", id: furn.id };
-      const adj = nearestWalkable(t.x, t.y, walkable, world.room.w, world.room.h);
-      if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
-      return { placed: false };
-    }
-  }
-
-  if (sitF) {
-    const prefer = slotFromTile(sitF, t.x);
-    const slot = freeSlot(sitF, prefer, p.id);
-    if (slot == null) {
-      onToast?.("No room — both seats are taken.");
-      return { placed: false };
-    }
-    world.pendingUse = { kind: "sit", id: sitF.id, slot };
-    const pos = seatWorldPos(sitF, slot);
-    const adj = nearestWalkable(Math.floor(pos.x), Math.floor(pos.y) + 1, walkable, world.room.w, world.room.h)
-      ?? nearestWalkable(Math.floor(pos.x), Math.floor(pos.y), walkable, world.room.w, world.room.h);
-    if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
-    else occupySeat(p, sitF.id, slot);
-    return { placed: false };
-  }
-
-  if (furn) {
-    const adj = nearestWalkable(t.x, t.y, walkable, world.room.w, world.room.h);
     if (adj) walkTo(p, adj.x, adj.y);
     return { placed: false };
   }
 
+  world.selectedFurnId = null;
   world.pendingUse = null;
   walkTo(p, t.x, t.y);
   return { placed: false };
 }
 
-export function placeAt(catalogId: string, x: number, y: number): boolean {
+export function selectedFurniture(): PlacedItem | undefined {
+  if (!world.selectedFurnId) return undefined;
+  return world.furniture.find((f) => f.id === world.selectedFurnId);
+}
+
+/** Walk to selected furniture and perform sit/drink/music/stage on arrival. */
+export function useSelectedFurniture(): boolean {
+  const p = player();
+  const f = selectedFurniture();
+  if (!p || !f) return false;
+  const cat = CATALOG_MAP[f.catalogId];
+  if (!cat) return false;
+  const can = walkableFor(p.id);
+
+  if (cat.sit) {
+    const slot = freeSlot(f, undefined, p.id);
+    if (slot == null) {
+      onToast?.("No room — both seats are taken.");
+      return false;
+    }
+    world.pendingUse = { kind: "sit", id: f.id, slot };
+    const pos = seatWorldPos(f, slot);
+    const adj =
+      nearestWalkable(Math.floor(pos.x), Math.floor(pos.y) + 1, can, world.room.w, world.room.h) ??
+      nearestWalkable(Math.floor(pos.x), Math.floor(pos.y), can, world.room.w, world.room.h);
+    if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
+    return true;
+  }
+  if (cat.drink) {
+    world.pendingUse = { kind: "drink", id: f.id };
+    const adj = nearestWalkable(f.x, f.y, can, world.room.w, world.room.h);
+    if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
+    return true;
+  }
+  if (cat.music) {
+    world.pendingUse = { kind: "music", id: f.id };
+    const adj = nearestWalkable(f.x, f.y, can, world.room.w, world.room.h);
+    if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
+    return true;
+  }
+  if (cat.stage) {
+    world.pendingUse = { kind: "stage", id: f.id };
+    const adj = nearestWalkable(f.x, f.y, can, world.room.w, world.room.h);
+    if (adj && walkTo(p, adj.x, adj.y) && !p.path.length) doUse(p);
+    return true;
+  }
+  onToast?.("Nothing to use here.");
+  return false;
+}
+
+export function placeAt(catalogId: string, x: number, y: number, rot?: number): boolean {
   const cat = CATALOG_MAP[catalogId];
   if (!cat || !world.room.private) return false;
-  if (x < 0 || y < 0 || x + cat.w > world.room.w || y + cat.d > world.room.h) return false;
-  for (let ix = x; ix < x + cat.w; ix++) {
-    for (let iy = y; iy < y + cat.d; iy++) {
+  const r = rot ?? 0;
+  const { w, d } = effectiveFootprint(cat, r);
+  if (x < 0 || y < 0 || x + w > world.room.w || y + d > world.room.h) return false;
+  for (let ix = x; ix < x + w; ix++) {
+    for (let iy = y; iy < y + d; iy++) {
       if (!cat.floor && !walkable(ix, iy)) return false;
     }
   }
-  world.furniture.push({ id: `p-${Date.now()}`, catalogId, x, y });
+  const item: PlacedItem = { id: `p-${Date.now()}`, catalogId, x, y };
+  if (r) {
+    const steps = rotSteps(cat);
+    item.rot = ((r % steps) + steps) % steps;
+  }
+  world.furniture.push(item);
   rebuildBlocked();
   return true;
 }
@@ -479,6 +625,7 @@ export function pickupAt(x: number, y: number): string | null {
     if (actor.pendingSit?.id === f.id) actor.pendingSit = undefined;
   }
   if (world.pendingUse?.id === f.id) world.pendingUse = null;
+  if (world.selectedFurnId === f.id) world.selectedFurnId = null;
   world.furniture = world.furniture.filter((it) => it.id !== f.id);
   rebuildBlocked();
   return f.catalogId;
@@ -556,8 +703,9 @@ export function startPerformance(): boolean {
     return false;
   }
   const cat = CATALOG_MAP[stage.catalogId];
-  const stageX = stage.x + (cat?.w ?? 1) / 2;
-  const stageY = stage.y + (cat?.d ?? 1) / 2;
+  const fp = cat ? effectiveFootprint(cat, stage.rot ?? 0) : { w: 1, d: 1 };
+  const stageX = stage.x + fp.w / 2;
+  const stageY = stage.y + fp.d / 2;
   if (Math.hypot(p.x - stageX, p.y - stageY) > 4.5) {
     onToast?.("Tap the stage and walk over before starting your set.");
     return false;
@@ -609,15 +757,8 @@ export function tick(dt: number) {
     if (a.path.length) {
       a.action = "walk";
       const t = a.path[0]!;
-      if (!walkable(t.x, t.y)) {
-        a.path = [];
-        a.action = "idle";
-        if (a.isPlayer) {
-          world.pendingUse = null;
-          onToast?.("That way is blocked.");
-        } else {
-          a.pendingSit = undefined;
-        }
+      if (!walkable(t.x, t.y) || tileTakenByActor(t.x, t.y, a.id)) {
+        deflectActor(a);
         continue;
       }
       const gx = t.x + 0.5;
@@ -628,6 +769,11 @@ export function tick(dt: number) {
       const spd = 3.1;
       const step = spd * dt;
       if (dist <= Math.max(0.06, step)) {
+        // Reserve destination: only land if still free.
+        if (tileTakenByActor(t.x, t.y, a.id)) {
+          deflectActor(a);
+          continue;
+        }
         a.x = gx;
         a.y = gy;
         a.path.shift();

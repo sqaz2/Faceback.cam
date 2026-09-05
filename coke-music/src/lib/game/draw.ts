@@ -10,7 +10,7 @@ import {
   TOP_STYLES,
 } from "./data";
 import type { Actor, Appearance, PlacedItem, RoomDef, Dir } from "./types";
-import { TILE_H, TILE_W, seatLiftPx, tileToScreen, world } from "./world";
+import { TILE_H, TILE_W, effectiveFootprint, itemFootprint, rotDegrees, seatLiftPx, tileToScreen, world } from "./world";
 
 export type SpriteMap = Record<string, HTMLImageElement>;
 
@@ -99,8 +99,10 @@ function extractFixedCell(src: HTMLImageElement, dir: number, size = 96): HTMLCa
   const out = document.createElement("canvas");
   out.width = size;
   out.height = size;
+  // Sheet columns are [away/-x, +y, +x, away/-y]; world dir 0=+x and 2=-x are swapped vs art.
+  const col = dir === 0 ? 2 : dir === 2 ? 0 : dir;
   const sw = src.naturalWidth / 4;
-  out.getContext("2d")!.drawImage(src, Math.max(0, Math.min(3, dir)) * sw, 0, sw, src.naturalHeight, 0, 0, size, size);
+  out.getContext("2d")!.drawImage(src, Math.max(0, Math.min(3, col)) * sw, 0, sw, src.naturalHeight, 0, 0, size, size);
   return out;
 }
 
@@ -219,7 +221,7 @@ function composeAvatar(
   const accessorySet = a.accessory > 0 ? wardrobe.accessories[a.accessory - 1] : undefined;
   const accessoryImg = accessorySet ? actionSheet(accessorySet, action) : undefined;
   if (!bodyImg.complete || bodyImg.naturalWidth < 8) return null;
-  const key = `${a.body ?? 0}-${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoe ?? 0}-${a.shoeColor}-${a.accessory}-${action}-${dir}`;
+  const key = `dmap-${a.body ?? 0}-${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoe ?? 0}-${a.shoeColor}-${a.accessory}-${action}-${dir}`;
   const wardrobeReady = [topImg, bottomImg, shoeImg, hairImg, accessoryImg]
     .filter((img): img is HTMLImageElement => !!img)
     .every((img) => img.complete && img.naturalWidth > 8);
@@ -387,9 +389,17 @@ function drawWalls(ctx: CanvasRenderingContext2D, room: RoomDef) {
 function drawProcFurniture(ctx: CanvasRenderingContext2D, item: PlacedItem) {
   const cat = CATALOG_MAP[item.catalogId];
   if (!cat) return;
-  const s = tileToScreen(item.x + (cat.w - 1) * 0.5, item.y + (cat.d - 1) * 0.5);
+  const fp = effectiveFootprint(cat, item.rot ?? 0);
+  const s = tileToScreen(item.x + (fp.w - 1) * 0.5, item.y + (fp.d - 1) * 0.5);
   const w = cat.w * TILE_W * 0.72;
   const d = cat.d * TILE_W * 0.72;
+  const deg = rotDegrees(cat, item.rot ?? 0);
+  if (deg) {
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate((deg * Math.PI) / 180);
+    ctx.translate(-s.x, -s.y);
+  }
   if (cat.floor) {
     const hx = (cat.w * TILE_W) / 2;
     const hy = (cat.d * TILE_H) / 2;
@@ -401,99 +411,68 @@ function drawProcFurniture(ctx: CanvasRenderingContext2D, item: PlacedItem) {
     ctx.closePath();
     ctx.fillStyle = "rgba(110,10,18,0.55)";
     ctx.fill();
+    if (deg) ctx.restore();
     return;
   }
   if (item.catalogId === "vending") {
     drawCube(ctx, s.x, s.y - 40, 28, 22, 52, "#e61a27", "#b0101c", "#8a0c16");
     ctx.fillStyle = "#1a1012";
     ctx.fillRect(s.x - 8, s.y - 28, 16, 22);
-    return;
-  }
-  if (item.catalogId === "jukebox") {
+  } else if (item.catalogId === "jukebox") {
     drawCube(ctx, s.x, s.y - 32, 26, 20, 40, "#e61a27", "#8a0c16", "#6e0a12");
-    return;
-  }
-  if (item.catalogId === "chair") {
+  } else if (item.catalogId === "chair") {
     drawCube(ctx, s.x, s.y - 6, 24, 22, 12, "#e61a27", "#b0101c", "#8a0c16");
     drawCube(ctx, s.x - 8, s.y - 20, 12, 22, 16, "#c4121e", "#8a0c16", "#6e0a12");
-    return;
-  }
-  if (item.catalogId === "plant") {
+  } else if (item.catalogId === "plant") {
     drawCube(ctx, s.x, s.y + 4, 16, 14, 10, "#e61a27", "#b0101c", "#8a0c16");
     ctx.beginPath();
     ctx.ellipse(s.x, s.y - 18, 16, 18, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#1f6b4a";
     ctx.fill();
-    return;
-  }
-  if (item.catalogId === "speaker") {
+  } else if (item.catalogId === "speaker") {
     drawCube(ctx, s.x, s.y - 22, 22, 18, 32, "#1a1012", "#14080a", "#0e0608");
-    return;
-  }
-  if (item.catalogId === "sofa") {
+  } else if (item.catalogId === "sofa") {
     drawCube(ctx, s.x, s.y - 4, w * 0.92, d * 0.8, 14, "#e61a27", "#b0101c", "#8a0c16");
     drawCube(ctx, s.x - w * 0.32, s.y - 18, 16, d * 0.8, 18, "#c4121e", "#8a0c16", "#6e0a12");
     drawCube(ctx, s.x + w * 0.32, s.y - 18, 16, d * 0.8, 18, "#c4121e", "#8a0c16", "#6e0a12");
-    return;
-  }
-  if (item.catalogId === "crate") {
+  } else if (item.catalogId === "crate") {
     drawCube(ctx, s.x, s.y - 6, 30, 24, 16, "#8a5a38", "#6e4428", "#5a3620");
-    return;
-  }
-  if (item.catalogId === "disco") {
+  } else if (item.catalogId === "disco") {
     ctx.beginPath();
     ctx.arc(s.x, s.y - 10, 11, 0, Math.PI * 2);
     ctx.fillStyle = "#d8d0cc";
     ctx.fill();
-    return;
-  }
-  if (item.catalogId === "table") {
+  } else if (item.catalogId === "table") {
     drawCube(ctx, s.x, s.y - 18, w * 0.7, d * 0.7, 6, "#f4e8dc", "#d4c2b0", "#c4b09c");
     drawCube(ctx, s.x, s.y + 2, 8, 8, 16, "#6e4428", "#5a3620", "#4a2c18");
-    return;
-  }
-  if (item.catalogId === "lamp") {
+  } else if (item.catalogId === "lamp") {
     drawCube(ctx, s.x, s.y + 8, 10, 10, 28, "#c5b9b4", "#9a8e88", "#7a706c");
     ctx.beginPath();
     ctx.ellipse(s.x, s.y - 18, 16, 10, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#f4e8dc";
     ctx.fill();
-    return;
-  }
-  if (item.catalogId === "bean") {
+  } else if (item.catalogId === "bean") {
     ctx.beginPath();
     ctx.ellipse(s.x, s.y + 6, 22, 14, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#e61a27";
     ctx.fill();
-    return;
-  }
-  if (item.catalogId === "fridge") {
+  } else if (item.catalogId === "fridge") {
     drawCube(ctx, s.x, s.y - 36, 28, 24, 44, "#f4e8dc", "#d0c0b4", "#c0b0a4");
-    return;
-  }
-  if (item.catalogId === "tv") {
+  } else if (item.catalogId === "tv") {
     drawCube(ctx, s.x, s.y - 22, 36, 16, 26, "#1a1012", "#120a0c", "#0c0608");
     ctx.fillStyle = "#2a5a8a";
     ctx.fillRect(s.x - 12, s.y - 14, 24, 14);
-    return;
-  }
-  if (item.catalogId === "stool") {
+  } else if (item.catalogId === "stool") {
     drawCube(ctx, s.x, s.y - 16, 20, 20, 5, "#e61a27", "#b0101c", "#8a0c16");
-    return;
-  }
-  if (item.catalogId === "booth") {
+  } else if (item.catalogId === "booth") {
     drawCube(ctx, s.x, s.y - 8, w, d * 0.8, 12, "#6e0a12", "#4a0810", "#3a060c");
     drawCube(ctx, s.x - 10, s.y - 22, 16, d * 0.8, 18, "#e61a27", "#b0101c", "#8a0c16");
-    return;
-  }
-  if (item.catalogId === "stage") {
+  } else if (item.catalogId === "stage") {
     drawCube(ctx, s.x, s.y - 8, w, d, 14, "#2a1619", "#1a1012", "#14080a");
     ctx.strokeStyle = "#e61a27";
     ctx.lineWidth = 2;
     ctx.strokeRect(s.x - 20, s.y - 4, 40, 8);
-    return;
-  }
-  if (item.catalogId === "mic") {
+  } else if (item.catalogId === "mic") {
     ctx.strokeStyle = "#c5b9b4";
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -504,9 +483,10 @@ function drawProcFurniture(ctx: CanvasRenderingContext2D, item: PlacedItem) {
     ctx.ellipse(s.x, s.y - 24, 7, 10, 0.3, 0, Math.PI * 2);
     ctx.fillStyle = "#1a1012";
     ctx.fill();
-    return;
+  } else {
+    drawCube(ctx, s.x, s.y - 16, w * 0.8, d * 0.8, 18, "#e61a27", "#b0101c", "#8a0c16");
   }
-  drawCube(ctx, s.x, s.y - 16, w * 0.8, d * 0.8, 18, "#e61a27", "#b0101c", "#8a0c16");
+  if (deg) ctx.restore();
 }
 
 const SPRITE_H: Record<string, number> = {
@@ -517,11 +497,11 @@ const SPRITE_H: Record<string, number> = {
   speaker: 84,
   plant: 86,
   mic: 82,
-  disco: 64,
-  sofa: 68,
+  disco: 90,
+  sofa: 64,
   booth: 72,
   chair: 62,
-  stool: 50,
+  stool: 48,
   table: 48,
   bean: 42,
   crate: 44,
@@ -531,15 +511,35 @@ const SPRITE_H: Record<string, number> = {
 
 function drawSpriteItem(ctx: CanvasRenderingContext2D, item: PlacedItem, img: HTMLImageElement) {
   const cat = CATALOG_MAP[item.catalogId]!;
-  const s = tileToScreen(item.x + (cat.w - 1) * 0.5, item.y + (cat.d - 1) * 0.5);
+  const { w, d } = effectiveFootprint(cat, item.rot ?? 0);
+  const s = tileToScreen(item.x + (w - 1) * 0.5, item.y + (d - 1) * 0.5);
   const footY = s.y + TILE_H * 0.5;
   const destH = SPRITE_H[cat.sprite ?? item.catalogId] ?? 56;
   const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+  // Size from unrotated catalog dims so the sprite doesn't stretch when footprint swaps.
   const tileSpan = TILE_W * (0.55 * cat.w + 0.45 * cat.d);
   let destW = destH * aspect;
   if (cat.w >= 2) destW = Math.min(Math.max(destW, tileSpan * 0.92), tileSpan * 1.08);
-  else destW = Math.min(Math.max(destW, tileSpan * 0.7), tileSpan * 1.15);
-  ctx.drawImage(img, s.x - destW / 2, footY - destH, destW, destH);
+  else if (aspect < 0.55) {
+    // Tall thin props (lamp, mic, plant): keep natural aspect -- forced min-width bends them.
+    destW = Math.min(destW, tileSpan * 1.15);
+  } else {
+    destW = Math.min(Math.max(destW, tileSpan * 0.7), tileSpan * 1.15);
+  }
+  // Hang items (disco ball) above the floor anchor so the chain is not a stub on the carpet.
+  const hangLift = cat.hang ? Math.round(destH * 0.7) : 0;
+  const deg = rotDegrees(cat, item.rot ?? 0);
+  if (deg) {
+    const cx = s.x;
+    const cy = footY - hangLift - destH / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((deg * Math.PI) / 180);
+    ctx.drawImage(img, -destW / 2, -destH / 2, destW, destH);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, s.x - destW / 2, footY - destH - hangLift, destW, destH);
+  }
 }
 
 export function drawAppearance(
@@ -652,8 +652,8 @@ export function renderWorld(
     | { sort: number; kind: "actor"; actor: Actor };
   const list: DrawItem[] = [];
   const furnSort = (f: PlacedItem) => {
-    const cat = CATALOG_MAP[f.catalogId];
-    return f.x + f.y + (cat?.w ?? 1) / 2 + (cat?.d ?? 1) / 2;
+    const fp = itemFootprint(f);
+    return f.x + f.y + fp.w / 2 + fp.d / 2;
   };
   for (const f of world.furniture) list.push({ sort: furnSort(f), kind: "furn", item: f });
   for (const a of world.actors) {
