@@ -13,9 +13,10 @@ function pngInfo(buffer) {
 
 test("FACEBACK.CAM uses one transparent four-direction master for every action", async () => {
   const actions = ["idle", "walk", "sit", "dance"];
-  const images = await Promise.all(actions.map((action) =>
-    readFile(new URL(`../public/coke-music/art/avatar/${action}-v2.png`, import.meta.url)),
-  ));
+  const images = await Promise.all([
+    ...actions.map((action) => readFile(new URL(`../public/coke-music/art/avatar/${action}-v2.png`, import.meta.url))),
+    ...actions.map((action) => readFile(new URL(`../public/coke-music/art/avatar/woman-${action}-v2.png`, import.meta.url))),
+  ]);
   const dimensions = images.map(pngInfo);
   assert.deepEqual(new Set(dimensions.map(({ width, height }) => `${width}x${height}`)).size, 1);
   for (const image of dimensions) {
@@ -24,8 +25,14 @@ test("FACEBACK.CAM uses one transparent four-direction master for every action",
   }
 
   const data = await readFile(new URL("../lib/coke-game/data.ts", import.meta.url), "utf8");
+  assert.match(data, /BODY_STYLES\s*=\s*\["Man",\s*"Woman"\]/);
+  assert.match(data, /body:\s*0/);
   assert.match(data, /accessory:\s*0/);
   assert.match(data, /"Headphones"/);
   assert.doesNotMatch(data, /avatar\/(?:idle|walk|sit|dance)\.png\?v=6/);
   assert.doesNotMatch(data, /avatar\/(?:hair|tops|bottoms|acc)\.png/);
+
+  const renderer = await readFile(new URL("../lib/coke-game/draw.ts", import.meta.url), "utf8");
+  assert.match(renderer, /measureBody\(body\)/, "accessories must use measured body anchors");
+  assert.match(renderer, /ensureAvatarSheets\(a\.body \?\? 0\)/, "the selected body must control the base atlas");
 });

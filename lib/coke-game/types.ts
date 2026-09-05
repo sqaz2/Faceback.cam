@@ -12,6 +12,8 @@ export type Overlay =
 export type Screen = "splash" | "create" | "world";
 
 export interface Appearance {
+  /** 0 = man, 1 = woman. Optional keeps older local saves compatible. */
+  body?: number;
   skin: number;
   hair: number;
   hairColor: number;

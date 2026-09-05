@@ -27,12 +27,15 @@ type AvatarSheets = {
   dance: HTMLImageElement;
 };
 
-let avatarSheets: AvatarSheets | null = null;
+const avatarSheets = new Map<number, AvatarSheets>();
 
-function ensureAvatarSheets() {
-  if (avatarSheets) return avatarSheets;
+function ensureAvatarSheets(body = 0) {
+  const bodyIndex = body === 1 ? 1 : 0;
+  const cached = avatarSheets.get(bodyIndex);
+  if (cached) return cached;
   const s = {} as AvatarSheets;
-  for (const [k, url] of Object.entries(AVATAR_URLS)) {
+  const urls = AVATAR_URLS[bodyIndex === 1 ? "woman" : "man"]!;
+  for (const [k, url] of Object.entries(urls)) {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.decoding = "async";
@@ -40,7 +43,7 @@ function ensureAvatarSheets() {
     img.src = url;
     (s as unknown as Record<string, HTMLImageElement>)[k] = img;
   }
-  avatarSheets = s;
+  avatarSheets.set(bodyIndex, s);
   return s;
 }
 
@@ -405,11 +408,64 @@ function drawHair(ctx: CanvasRenderingContext2D, style: number, color: string, d
   }
 }
 
-function drawWardrobeHair(ctx: CanvasRenderingContext2D, a: Appearance, dir: number, action: Actor["action"]) {
-  const sitting = action === "sit";
-  const hx = 48;
-  const hy = sitting ? 17 : 14;
-  const r = sitting ? 8 : 9;
+type BodyAnchors = {
+  centerX: number;
+  headX: number;
+  headY: number;
+  headR: number;
+  shoulderY: number;
+  hipY: number;
+  width: number;
+  height: number;
+};
+
+function measureBody(body: HTMLCanvasElement): BodyAnchors {
+  const data = body.getContext("2d")!.getImageData(0, 0, body.width, body.height).data;
+  let minX = body.width;
+  let maxX = 0;
+  let minY = body.height;
+  let maxY = 0;
+  for (let y = 0; y < body.height; y++) {
+    for (let x = 0; x < body.width; x++) {
+      if (data[(y * body.width + x) * 4 + 3]! < 24) continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (maxX <= minX || maxY <= minY) {
+    return { centerX: 48, headX: 48, headY: 8, headR: 4.5, shoulderY: 23, hipY: 55, width: 40, height: 90 };
+  }
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  const headCutoff = minY + height * 0.18;
+  let headSum = 0;
+  let headCount = 0;
+  for (let y = minY; y <= headCutoff; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (data[(y * body.width + x) * 4 + 3]! < 24) continue;
+      headSum += x;
+      headCount++;
+    }
+  }
+  const centerX = (minX + maxX) / 2;
+  return {
+    centerX,
+    headX: headCount ? headSum / headCount : centerX,
+    headY: minY + height * 0.075,
+    headR: Math.max(3.5, Math.min(6, height * 0.052)),
+    shoulderY: minY + height * 0.25,
+    hipY: minY + height * 0.56,
+    width,
+    height,
+  };
+}
+
+function drawWardrobeHair(ctx: CanvasRenderingContext2D, a: Appearance, dir: number, anchor: BodyAnchors) {
+  const hx = anchor.headX;
+  const hy = anchor.headY;
+  const r = anchor.headR;
   const hairC = HAIR_COLORS[a.hairColor] ?? HAIR_COLORS[0]!;
   ctx.save();
   if (facingLeft(dir)) {
@@ -421,14 +477,13 @@ function drawWardrobeHair(ctx: CanvasRenderingContext2D, a: Appearance, dir: num
   ctx.restore();
 }
 
-function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: number, action: Actor["action"]) {
+function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: number, action: Actor["action"], anchor: BodyAnchors) {
   const sitting = action === "sit";
-  const hx = 48;
-  const hy = sitting ? 32 : 26;
-  const r = sitting ? 16 : 18;
+  const hx = anchor.centerX;
+  const hy = anchor.shoulderY;
+  const r = Math.max(8, anchor.width * 0.24);
   const topC = CLOTH_COLORS[a.topColor] ?? CLOTH_COLORS[0]!;
   const botC = CLOTH_COLORS[a.bottomColor] ?? CLOTH_COLORS[2]!;
-  const skinC = SKINS[a.skin] ?? SKINS[0]!;
   ctx.save();
   if (facingLeft(dir)) {
     ctx.translate(hx, 0);
@@ -437,69 +492,71 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
   }
 
   if (a.top === 1) {
-    ctx.fillStyle = skinC;
-    oval(ctx, hx - 13, hy + 20, 4.5, 9, skinC);
-    oval(ctx, hx + 13, hy + 20, 4.5, 9, skinC);
+    ctx.strokeStyle = shade(topC, 28);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(hx - r * 0.38, hy - 1);
+    ctx.lineTo(hx - r * 0.18, hy + r * 0.45);
+    ctx.moveTo(hx + r * 0.38, hy - 1);
+    ctx.lineTo(hx + r * 0.18, hy + r * 0.45);
+    ctx.stroke();
   } else if (a.top === 2) {
     ctx.strokeStyle = shade(topC, -25);
-    ctx.lineWidth = 5;
+    ctx.lineWidth = Math.max(2, anchor.headR * 0.55);
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(hx, hy + 8, r + 2, Math.PI * 1.12, Math.PI * 1.88);
+    ctx.arc(hx, hy - anchor.headR * 0.1, anchor.headR * 1.6, Math.PI * 1.12, Math.PI * 1.88);
     ctx.stroke();
   } else if (a.top === 3) {
-    ctx.fillStyle = shade(topC, 22);
+    ctx.strokeStyle = shade(topC, 32);
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(hx - 2, 48);
-    ctx.lineTo(hx - 11, 64);
-    ctx.lineTo(hx - 4, 66);
-    ctx.lineTo(hx, 52);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(hx + 2, 48);
-    ctx.lineTo(hx + 11, 64);
-    ctx.lineTo(hx + 4, 66);
-    ctx.lineTo(hx, 52);
-    ctx.fill();
+    ctx.moveTo(hx, hy + 1);
+    ctx.lineTo(hx - r * 0.35, anchor.hipY - 1);
+    ctx.moveTo(hx, hy + 1);
+    ctx.lineTo(hx + r * 0.35, anchor.hipY - 1);
+    ctx.moveTo(hx, hy + 1);
+    ctx.lineTo(hx, anchor.hipY + 2);
+    ctx.stroke();
   }
 
-  if (a.bottom === 1 && !sitting) {
-    ctx.fillStyle = skinC;
-    ctx.fillRect(hx - 12, 72, 8, 10);
-    ctx.fillRect(hx + 4, 72, 8, 10);
-  } else if (a.bottom === 2 && !sitting) {
+  if (a.bottom === 2 && !sitting) {
     ctx.fillStyle = botC;
     ctx.beginPath();
-    ctx.moveTo(hx - 10, 62);
-    ctx.lineTo(hx + 10, 62);
-    ctx.lineTo(hx + 16, 80);
-    ctx.lineTo(hx - 16, 80);
+    const half = Math.max(6, anchor.width * 0.15);
+    ctx.moveTo(hx - half, anchor.hipY - 2);
+    ctx.lineTo(hx + half, anchor.hipY - 2);
+    ctx.lineTo(hx + half * 1.35, anchor.hipY + anchor.height * 0.14);
+    ctx.lineTo(hx - half * 1.35, anchor.hipY + anchor.height * 0.14);
     ctx.closePath();
     ctx.fill();
   }
 
   const acc = ACCESSORIES[a.accessory];
-  const headY = sitting ? 17 : 14;
-  const headR = sitting ? 8 : 9;
+  const headX = anchor.headX;
+  const headY = anchor.headY;
+  const headR = anchor.headR;
   if (acc === "Shades") {
-    ctx.fillStyle = "#1a1012";
-    ctx.fillRect(hx - 7, headY - 1, 14, 3);
+    if (dir === 1 || dir === 2) {
+      ctx.fillStyle = "#1a1012";
+      ctx.fillRect(headX - headR * 0.9, headY - 0.2, headR * 1.8, Math.max(1.5, headR * 0.35));
+    }
   } else if (acc === "Headphones") {
-    oval(ctx, hx - (headR + 1), headY + 1, 2.5, 4, "#1a1012");
-    oval(ctx, hx + (headR + 1), headY + 1, 2.5, 4, "#1a1012");
+    oval(ctx, headX - headR * 0.95, headY + 1, headR * 0.28, headR * 0.48, "#1a1012");
+    oval(ctx, headX + headR * 0.95, headY + 1, headR * 0.28, headR * 0.48, "#1a1012");
     ctx.strokeStyle = "#1a1012";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(hx, headY - 1, headR + 1, Math.PI, 0);
+    ctx.arc(headX, headY - 0.5, headR * 1.02, Math.PI, 0);
     ctx.stroke();
   } else if (acc === "Cap") {
-    oval(ctx, hx, headY - headR * 0.72, headR * 1.02, headR * 0.38, "#e61a27");
+    oval(ctx, headX, headY - headR * 0.72, headR * 1.02, headR * 0.38, "#e61a27");
     ctx.fillStyle = "#c4121e";
     ctx.beginPath();
-    ctx.ellipse(hx + headR * 0.42, headY - headR * 0.5, headR * 0.72, headR * 0.16, 0.15, 0, Math.PI * 2);
+    ctx.ellipse(headX + headR * 0.42, headY - headR * 0.5, headR * 0.72, headR * 0.16, 0.15, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = shade("#e61a27", -30);
-    ctx.fillRect(hx - headR * 0.7, headY - headR * 0.72, headR * 1.4, 2);
+    ctx.fillRect(headX - headR * 0.7, headY - headR * 0.72, headR * 1.4, Math.max(1, headR * 0.18));
   }
   ctx.restore();
 }
@@ -509,11 +566,11 @@ function composeAvatar(
   dir: number,
   action: Actor["action"],
 ): HTMLCanvasElement | null {
-  const sh = ensureAvatarSheets();
+  const sh = ensureAvatarSheets(a.body ?? 0);
   const bodyImg =
     action === "sit" ? sh.sit : action === "walk" ? sh.walk : action === "dance" || action === "wave" ? sh.dance : sh.idle;
   if (!bodyImg.complete || bodyImg.naturalWidth < 8) return null;
-  const key = `${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoeColor}-${a.accessory}-${action}-${dir}`;
+  const key = `${a.body ?? 0}-${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoeColor}-${a.accessory}-${action}-${dir}`;
   const wardrobeReady = true;
   const hit = frameCache.get(key);
   if (hit && wardrobeReady) return hit;
@@ -540,13 +597,14 @@ function composeAvatar(
   out.height = body.height;
   const ctx = out.getContext("2d")!;
   ctx.drawImage(body, 0, 0);
+  const anchor = measureBody(body);
   try {
-    drawWardrobeHair(ctx, a, dir, action);
+    drawWardrobeHair(ctx, a, dir, anchor);
   } catch {
     /* hair optional */
   }
   try {
-    drawWardrobeFront(ctx, a, dir, action);
+    drawWardrobeFront(ctx, a, dir, action, anchor);
   } catch {
     /* front optional */
   }

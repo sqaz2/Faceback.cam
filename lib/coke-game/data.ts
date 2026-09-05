@@ -18,8 +18,10 @@ export const HAIR_STYLES = ["Crop", "Spikes", "Flow", "Halo", "Tail", "Bangs"];
 export const TOP_STYLES = ["Tee", "Tank", "Hoodie", "Jacket"];
 export const BOTTOM_STYLES = ["Pants", "Shorts", "Skirt"];
 export const ACCESSORIES = ["None", "Shades", "Headphones", "Cap"];
+export const BODY_STYLES = ["Man", "Woman"];
 
 export const DEFAULT_APPEARANCE: Appearance = {
+  body: 0,
   skin: 0,
   hair: 1,
   hairColor: 0,
@@ -346,6 +348,7 @@ export function randomAppearance(seed = Math.random()): Appearance {
     return seed / 233280;
   };
   return {
+    body: Math.floor(r() * BODY_STYLES.length),
     skin: Math.floor(r() * SKINS.length),
     hair: Math.floor(r() * HAIR_STYLES.length),
     hairColor: Math.floor(r() * HAIR_COLORS.length),
@@ -378,9 +381,17 @@ export const SPRITE_URLS: Record<string, string> = {
   tv: "/coke-music/art/furniture/tv.png?v=6",
 };
 
-export const AVATAR_URLS: Record<string, string> = {
-  idle: "/coke-music/art/avatar/idle-v2.png?v=7",
-  walk: "/coke-music/art/avatar/walk-v2.png?v=7",
-  sit: "/coke-music/art/avatar/sit-v2.png?v=7",
-  dance: "/coke-music/art/avatar/dance-v2.png?v=7",
+export const AVATAR_URLS: Record<string, Record<string, string>> = {
+  man: {
+    idle: "/coke-music/art/avatar/idle-v2.png?v=8",
+    walk: "/coke-music/art/avatar/walk-v2.png?v=8",
+    sit: "/coke-music/art/avatar/sit-v2.png?v=8",
+    dance: "/coke-music/art/avatar/dance-v2.png?v=8",
+  },
+  woman: {
+    idle: "/coke-music/art/avatar/woman-idle-v2.png?v=8",
+    walk: "/coke-music/art/avatar/woman-walk-v2.png?v=8",
+    sit: "/coke-music/art/avatar/woman-sit-v2.png?v=8",
+    dance: "/coke-music/art/avatar/woman-dance-v2.png?v=8",
+  },
 };

@@ -7,6 +7,7 @@ import { Wordmark } from "@/components/game/wordmark";
 import { WorldView } from "@/components/game/world-view";
 import {
   ACCESSORIES,
+  BODY_STYLES,
   BOTTOM_STYLES,
   CATALOG,
   CLOTH_COLORS,
@@ -128,6 +129,13 @@ function CreateVego() {
               className="mt-1 h-11 w-full rounded-[12px] border border-border bg-ink-soft px-3 text-foam outline-none ring-coke focus:ring-2"
             />
           </label>
+          <Row label="Body">
+            {BODY_STYLES.map((body, i) => (
+              <Chip key={body} on={(appearance.body ?? 0) === i} onClick={() => patch({ body: i })}>
+                {body}
+              </Chip>
+            ))}
+          </Row>
           <Swatch label="Skin" values={SKINS} value={appearance.skin} onPick={(i) => patch({ skin: i })} />
           <Row label="Hair">
             {HAIR_STYLES.map((h, i) => (
@@ -169,7 +177,7 @@ function CreateVego() {
             value={appearance.shoeColor}
             onPick={(i) => patch({ shoeColor: i })}
           />
-          <Row label="Extra">
+          <Row label="Accessories">
             {ACCESSORIES.map((h, i) => (
               <Chip key={h} on={appearance.accessory === i} onClick={() => patch({ accessory: i })}>
                 {h}
@@ -416,6 +424,13 @@ function Wardrobe() {
       </div>
       <AvatarPreview appearance={appearance} />
       <div className="mt-4 flex flex-col gap-3">
+        <Row label="Body">
+          {BODY_STYLES.map((body, i) => (
+            <Chip key={body} on={(appearance.body ?? 0) === i} onClick={() => patch({ body: i })}>
+              {body}
+            </Chip>
+          ))}
+        </Row>
         <Swatch values={SKINS} value={appearance.skin} onPick={(i) => patch({ skin: i })} label="Skin" />
         <Row label="Hair">
           {HAIR_STYLES.map((h, i) => (
@@ -442,7 +457,7 @@ function Wardrobe() {
         </Row>
         <Swatch values={CLOTH_COLORS} value={appearance.bottomColor} onPick={(i) => patch({ bottomColor: i })} label="Bottom color" />
         <Swatch values={CLOTH_COLORS} value={appearance.shoeColor} onPick={(i) => patch({ shoeColor: i })} label="Shoes" />
-        <Row label="Extra">
+        <Row label="Accessories">
           {ACCESSORIES.map((h, i) => (
             <Chip key={h} on={appearance.accessory === i} onClick={() => patch({ accessory: i })}>
               {h}

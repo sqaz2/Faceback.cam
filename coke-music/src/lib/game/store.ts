@@ -26,7 +26,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAppearance(value: unknown): value is Appearance {
-  return isRecord(value) && APPEARANCE_FIELDS.every((field) => Number.isInteger(value[field]));
+  return isRecord(value)
+    && APPEARANCE_FIELDS.every((field) => Number.isInteger(value[field]))
+    && (value.body === undefined || Number.isInteger(value.body));
+}
+
+function normalizeAppearance(value: Appearance): Appearance {
+  return { ...value, body: value.body === 1 ? 1 : 0 };
 }
 
 function isPlacedItem(value: unknown): value is PlacedItem {
@@ -185,7 +191,7 @@ export const useGame = create<GameState>((set, get) => ({
       hasBurnedDisc: () => get().discs.length > 0,
     });
     if (s) {
-      let appearance = s.appearance;
+      let appearance = normalizeAppearance(s.appearance);
       try {
         if (appearance.accessory === 2 && !localStorage.getItem(ACCESSORY_DEFAULT_KEY)) {
           appearance = { ...appearance, accessory: 0 };
@@ -216,7 +222,7 @@ export const useGame = create<GameState>((set, get) => ({
     const payload: Save = {
       version: VERSION,
       name: s.name,
-      appearance: s.appearance,
+      appearance: normalizeAppearance(s.appearance),
       db: s.db,
       inventory: s.inventory,
       discs: s.discs,
@@ -250,7 +256,7 @@ export const useGame = create<GameState>((set, get) => ({
     return JSON.stringify({
       version: VERSION,
       name: s.name,
-      appearance: s.appearance,
+      appearance: normalizeAppearance(s.appearance),
       db: s.db,
       inventory: s.inventory,
       discs: s.discs,
@@ -265,7 +271,7 @@ export const useGame = create<GameState>((set, get) => ({
     set({
       hasSave: true,
       name: s.name,
-      appearance: s.appearance,
+      appearance: normalizeAppearance(s.appearance),
       db: s.db,
       inventory: s.inventory,
       discs: s.discs,
@@ -274,7 +280,7 @@ export const useGame = create<GameState>((set, get) => ({
       seenHelp: s.seenHelp,
       placing: null,
     });
-    setPlayerLook(s.appearance, s.name);
+    setPlayerLook(normalizeAppearance(s.appearance), s.name);
     return get().persist() ? "ok" : "unsaved";
   },
   setScreen: (screen) => set({ screen }),
