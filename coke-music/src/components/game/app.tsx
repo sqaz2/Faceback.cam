@@ -111,7 +111,7 @@ function CreateVego() {
     let raf = 0;
     const t0 = performance.now();
     const loop = (now: number) => {
-      const t = (now - t0) / 1000;
+      const t = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (now - t0) / 1000;
       if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "idle");
       raf = requestAnimationFrame(loop);
     };
@@ -221,13 +221,35 @@ function CreateVego() {
 function Overlays() {
   const overlay = useGame((s) => s.overlay);
   const setOverlay = useGame((s) => s.setOverlay);
+  const dialogRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!overlay) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) ?? []);
+    window.setTimeout(() => focusable()[0]?.focus(), 0);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOverlay(null);
+      if (e.key === "Tab") {
+        const items = focusable();
+        if (!items.length) return;
+        const first = items[0]!;
+        const last = items[items.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
   }, [overlay, setOverlay]);
   if (!overlay) return null;
   return (
@@ -238,7 +260,13 @@ function Overlays() {
         className="absolute inset-0 bg-ink/60"
         onClick={() => setOverlay(null)}
       />
-      <div className="relative z-10 flex max-h-[88dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-[24px] border border-border bg-ink-soft shadow-2xl sm:rounded-[24px]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Coke Music menu"
+        className="relative z-10 flex max-h-[88dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-[24px] border border-border bg-ink-soft shadow-2xl sm:rounded-[24px]"
+      >
         {overlay === "nav" && <Navigator />}
         {overlay === "mixer" && <MixerPanel />}
         {overlay === "catalog" && <Catalog />}
@@ -388,7 +416,7 @@ function Wardrobe() {
     let raf = 0;
     const t0 = performance.now();
     const loop = (now: number) => {
-      const t = (now - t0) / 1000;
+      const t = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (now - t0) / 1000;
       if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "dance");
       raf = requestAnimationFrame(loop);
     };
@@ -454,6 +482,20 @@ function Wardrobe() {
 
 function Help() {
   const setOverlay = useGame((s) => s.setOverlay);
+  const exportSave = useGame((s) => s.exportSave);
+  const importSave = useGame((s) => s.importSave);
+  const setToast = useGame((s) => s.setToast);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const downloadSave = () => {
+    const blob = new Blob([exportSave()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "coke-music-save.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   return (
     <div className="p-4 sm:p-6">
       <div className="flex items-start justify-between">
@@ -467,13 +509,34 @@ function Help() {
       </div>
       <ul className="mt-4 space-y-3 text-sm leading-relaxed text-cream/90">
         <li>Tap the floor to walk. Tap a sofa or chair (or the tiles next to it) to sit on the cushion — two-seaters have room for someone next to you. Furniture blocks its tiles; you cannot walk through a sofa or plant.</li>
-        <li>Drinking cola and getting thumbs-up on a set earns <b className="text-foam">decibels</b>.</li>
+        <li>Drinking cola, finishing a set, and winning minigames earns <b className="text-foam">decibels</b>.</li>
         <li>
-          Open <b className="text-foam">Mix</b> to stack drum, bass, melody, and vox clips. Burn a disc, then hit Stage.
+          Open <b className="text-foam">Mix</b> to stack drum, bass, melody, and vox clips. Burn a disc, walk to a stage, then start your set.
         </li>
         <li>The Red Room pays double. My Studio is yours — buy furniture, then place it.</li>
-        <li>V-Ego San and Uncover the Music live in the navigator. Right-click furniture in your studio to pack it up.</li>
+        <li>V-Ego San and Uncover the Music live in the navigator. In your studio, tap <b className="text-foam">Pack</b>, then tap furniture to return it to inventory.</li>
       </ul>
+      <div className="mt-5 grid grid-cols-2 gap-2">
+        <Button variant="ink" onClick={downloadSave}>Back up progress</Button>
+        <Button variant="ink" onClick={() => importRef.current?.click()}>Restore backup</Button>
+        <input
+          ref={importRef}
+          type="file"
+          accept="application/json,.json"
+          className="sr-only"
+          aria-label="Restore Coke Music backup"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void file.text().then((raw) => {
+              const result = importSave(raw);
+              if (result === "ok") setToast("Progress restored.");
+              else if (result === "invalid") setToast("That backup is not a valid Coke Music save.");
+            }).catch(() => setToast("That backup could not be read."));
+          }}
+        />
+      </div>
       <Button className="mt-6 w-full" onClick={() => setOverlay(null)}>
         Got it
       </Button>
@@ -501,6 +564,7 @@ function Swatch({
             key={c + i}
             type="button"
             aria-label={`${label} ${i + 1}`}
+            aria-pressed={value === i}
             onClick={() => onPick(i)}
             className={cn(
               "size-8 rounded-full border-2",
@@ -535,6 +599,7 @@ function Chip({
   return (
     <button
       type="button"
+      aria-pressed={on}
       onClick={onClick}
       className={cn(
         "h-9 rounded-full px-3 text-sm font-medium",

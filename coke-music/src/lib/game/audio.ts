@@ -9,6 +9,7 @@ let duckGain: GainNode | null = null;
 let delaySend: GainNode | null = null;
 let delayNode: DelayNode | null = null;
 let analyser: AnalyserNode | null = null;
+let mixSourceBus: GainNode | null = null;
 let muted = false;
 let noiseBuf: AudioBuffer | null = null;
 let vinylBuf: AudioBuffer | null = null;
@@ -81,6 +82,8 @@ function graph(): void {
   duckGain.gain.value = 1;
   duckGain.connect(musicBus!);
   duckGain.connect(delaySend);
+  mixSourceBus = ctx.createGain();
+  mixSourceBus.connect(duckGain);
 
   musicBus!.disconnect();
   musicBus!.connect(shaper);
@@ -127,7 +130,14 @@ function destSfx(): AudioNode | null {
   return sfxBus;
 }
 function destMusic(): AudioNode | null {
-  return musicBus;
+  return mixSourceBus;
+}
+
+function resetMixSourceBus() {
+  if (!ctx || !duckGain) return;
+  if (mixSourceBus) mixSourceBus.disconnect();
+  mixSourceBus = ctx.createGain();
+  mixSourceBus.connect(duckGain);
 }
 
 function envGain(t: number, a: number, d: number, peak = 0.4): GainNode | null {
@@ -1029,8 +1039,9 @@ function pump() {
 
 export function startMix() {
   unlockAudio();
-  if (!ctx || !destMusic()) return;
+  if (!ctx || !duckGain) return;
   if (mix.playing) return;
+  if (!mixSourceBus) resetMixSourceBus();
   stopLounge();
   if (!mix.clips.some(Boolean)) {
     const d = DEFAULT_CLIPS[mix.genre] ?? DEFAULT_CLIPS.pop;
@@ -1052,6 +1063,10 @@ export function stopMix() {
     clearTimeout(mix.timer);
     mix.timer = null;
   }
+  // Every scheduled note for this playback feeds one disposable bus. Dropping
+  // that bus makes Stop immediate and prevents a rapid restart from overlapping
+  // bars that were already queued by Web Audio.
+  resetMixSourceBus();
   if (ctx && duckGain) duckGain.gain.setTargetAtTime(1, ctx.currentTime, 0.05);
   startLounge();
 }

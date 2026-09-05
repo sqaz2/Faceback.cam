@@ -5,6 +5,7 @@ import { bindWorld, enterRoom, placeAt, setPlayerLook, studioFurniture } from ".
 import { startLounge, unlockAudio } from "./audio";
 
 const KEY = "coke-music-v1";
+const BACKUP_KEY = "coke-music-v1-backup";
 const VERSION = 1;
 
 const APPEARANCE_FIELDS: (keyof Appearance)[] = [
@@ -90,7 +91,9 @@ interface GameState {
   placing: string | null;
   muted: boolean;
   hydrate: () => void;
-  persist: () => void;
+  persist: () => boolean;
+  exportSave: () => string;
+  importSave: (raw: string) => "ok" | "invalid" | "unsaved";
   setScreen: (s: Screen) => void;
   setOverlay: (o: Overlay) => void;
   setName: (n: string) => void;
@@ -100,7 +103,7 @@ interface GameState {
   grantItem: (id: string) => void;
   spendItem: (id: string) => boolean;
   placeOwnedItem: (id: string, x: number, y: number) => boolean;
-  addDisc: (m: Mix) => void;
+  addDisc: (m: Mix) => boolean;
   setPlacing: (id: string | null) => void;
   setStudio: (f: PlacedItem[]) => void;
   pushChat: (name: string, text: string, self?: boolean) => void;
@@ -134,13 +137,29 @@ const empty: Pick<
   seenHelp: false,
 };
 
+function parseSave(raw: string | null): Save | null {
+  if (!raw) return null;
+  try {
+    const s: unknown = JSON.parse(raw);
+    return isSave(s) ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 function load(): Save | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const s: unknown = JSON.parse(raw);
-    if (!isSave(s)) return null;
-    return s;
+    const current = parseSave(localStorage.getItem(KEY));
+    if (current) return current;
+    const backup = parseSave(localStorage.getItem(BACKUP_KEY));
+    if (backup) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(backup));
+      } catch {
+        /* recovery can still continue in memory */
+      }
+    }
+    return backup;
   } catch {
     return null;
   }
@@ -162,6 +181,7 @@ export const useGame = create<GameState>((set, get) => ({
       onDb: (n) => get().addDb(n),
       onChat: (name, text, self) => get().pushChat(name, text, self),
       onToast: (t) => get().setToast(t),
+      hasBurnedDisc: () => get().discs.length > 0,
     });
     if (s) {
       set({
@@ -194,11 +214,58 @@ export const useGame = create<GameState>((set, get) => ({
       lastRoom: s.lastRoom,
       seenHelp: s.seenHelp,
     };
+    let previous: string | null = null;
+    try {
+      previous = localStorage.getItem(KEY);
+    } catch {
+      /* the primary write below may still be allowed */
+    }
+    if (parseSave(previous)) {
+      try {
+        localStorage.setItem(BACKUP_KEY, previous!);
+      } catch {
+        /* keeping the current primary save matters more than rotating backup */
+      }
+    }
     try {
       localStorage.setItem(KEY, JSON.stringify(payload));
+      return true;
     } catch {
-      /* private mode */
+      set({ toast: "Progress could not be saved on this device." });
+      return false;
     }
+  },
+  exportSave: () => {
+    const s = get();
+    return JSON.stringify({
+      version: VERSION,
+      name: s.name,
+      appearance: s.appearance,
+      db: s.db,
+      inventory: s.inventory,
+      discs: s.discs,
+      studio: s.studio,
+      lastRoom: s.lastRoom,
+      seenHelp: s.seenHelp,
+    } satisfies Save, null, 2);
+  },
+  importSave: (raw) => {
+    const s = parseSave(raw);
+    if (!s) return "invalid";
+    set({
+      hasSave: true,
+      name: s.name,
+      appearance: s.appearance,
+      db: s.db,
+      inventory: s.inventory,
+      discs: s.discs,
+      studio: s.studio,
+      lastRoom: s.lastRoom,
+      seenHelp: s.seenHelp,
+      placing: null,
+    });
+    setPlayerLook(s.appearance, s.name);
+    return get().persist() ? "ok" : "unsaved";
   },
   setScreen: (screen) => set({ screen }),
   setOverlay: (overlay) => set({ overlay, placing: overlay === "catalog" ? get().placing : null }),
@@ -249,8 +316,10 @@ export const useGame = create<GameState>((set, get) => ({
     return true;
   },
   addDisc: (m) => {
+    const replaced = get().discs.length >= 12;
     set({ discs: [m, ...get().discs].slice(0, 12) });
     get().persist();
+    return replaced;
   },
   setPlacing: (placing) => set({ placing, overlay: placing ? null : get().overlay }),
   setStudio: (studio) => {
@@ -287,6 +356,7 @@ export const useGame = create<GameState>((set, get) => ({
   reset: () => {
     try {
       localStorage.removeItem(KEY);
+      localStorage.removeItem(BACKUP_KEY);
     } catch {
       /* ignore */
     }

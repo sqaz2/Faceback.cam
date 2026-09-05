@@ -41,6 +41,7 @@ export const world: World = {
 let onDb: ((n: number, why: string) => void) | null = null;
 let onChat: ((name: string, text: string, self?: boolean) => void) | null = null;
 let onToast: ((t: string) => void) | null = null;
+let hasBurnedDisc: (() => boolean) | null = null;
 let doubleDb = false;
 let playerAppearance: Appearance = randomAppearance();
 let playerName = "V-Ego";
@@ -49,10 +50,12 @@ export function bindWorld(handlers: {
   onDb: (n: number, why: string) => void;
   onChat: (name: string, text: string, self?: boolean) => void;
   onToast: (t: string) => void;
+  hasBurnedDisc: () => boolean;
 }) {
   onDb = handlers.onDb;
   onChat = handlers.onChat;
   onToast = handlers.onToast;
+  hasBurnedDisc = handlers.hasBurnedDisc;
 }
 
 export function setPlayerLook(a: Appearance, name: string) {
@@ -377,6 +380,13 @@ function walkTo(actor: Actor, tx: number, ty: number) {
   return true;
 }
 
+export function movePlayerBy(dx: number, dy: number): boolean {
+  const p = player();
+  if (!p) return false;
+  world.pendingUse = null;
+  return walkTo(p, Math.floor(p.x) + dx, Math.floor(p.y) + dy);
+}
+
 export function setHover(sx: number, sy: number) {
   const t = screenToTile(sx, sy);
   if (t.x >= 0 && t.y >= 0 && t.x < world.room.w && t.y < world.room.h) world.hover = t;
@@ -529,9 +539,29 @@ function doUse(p: Actor) {
   }
 }
 
-export function startPerformance() {
+export function startPerformance(): boolean {
   const p = player();
-  if (!p) return;
+  if (!p) return false;
+  if (world.performing) {
+    onToast?.("Your set is already playing.");
+    return false;
+  }
+  const stage = world.furniture.find((f) => CATALOG_MAP[f.catalogId]?.stage);
+  if (!stage) {
+    onToast?.("This room does not have a stage.");
+    return false;
+  }
+  if (!hasBurnedDisc?.()) {
+    onToast?.("Burn a disc in Mix before performing.");
+    return false;
+  }
+  const cat = CATALOG_MAP[stage.catalogId];
+  const stageX = stage.x + (cat?.w ?? 1) / 2;
+  const stageY = stage.y + (cat?.d ?? 1) / 2;
+  if (Math.hypot(p.x - stageX, p.y - stageY) > 4.5) {
+    onToast?.("Tap the stage and walk over before starting your set.");
+    return false;
+  }
   startMix();
   world.performing = true;
   world.performUntil = world.time + 28;
@@ -544,6 +574,7 @@ export function startPerformance() {
     const stage = world.furniture.find((f) => CATALOG_MAP[f.catalogId]?.stage);
     if (stage) walkTo(a, stage.x + 1, stage.y + 3);
   });
+  return true;
 }
 
 export function studioFurniture(): PlacedItem[] {
@@ -558,7 +589,10 @@ export function tick(dt: number) {
   if (world.performing && world.time > world.performUntil) {
     world.performing = false;
     stopMix();
-    onToast?.("Set over. Burn another disc.");
+    const amt = doubleDb ? 24 : 12;
+    onDb?.(amt, "solo-set");
+    sfxThumbs();
+    onToast?.(`Set complete. +${amt} dB`);
   }
 
   for (const a of world.actors) {
@@ -668,21 +702,6 @@ export function tick(dt: number) {
           a.action = "idle";
         }
       }
-    }
-  }
-
-  if (world.performing && Math.random() < dt * 0.35) {
-    const fan = world.actors.find((a) => !a.isPlayer && a.action === "dance");
-    if (fan) {
-      const amt = doubleDb ? 16 : 8;
-      onDb?.(amt, "thumbs");
-      sfxThumbs();
-      const p = player();
-      if (p) {
-        const s = tileToScreen(p.x, p.y);
-        popText(s.x, s.y - 48, `+${amt} dB`, "#F4E8DC");
-      }
-      say(fan, "thumbs up");
     }
   }
 

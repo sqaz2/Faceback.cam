@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { sfxClick, sfxLose, sfxWin } from "@/lib/game/audio";
 import { useGame } from "@/lib/game/store";
@@ -133,6 +133,18 @@ export function UncoverMusic() {
   const [lock, setLock] = useState(false);
   const [left, setLeft] = useState(50);
   const [done, setDone] = useState(false);
+  const settled = useRef(false);
+  const pendingFlip = useRef<number | null>(null);
+
+  const finish = useCallback((won: boolean, points: number) => {
+    if (settled.current) return;
+    settled.current = true;
+    setDone(true);
+    if (won) sfxWin();
+    else sfxLose();
+    addDb(points);
+    setToast(won ? `+${points} dB — full set` : `Time. +${points} dB`);
+  }, [addDb, setToast]);
 
   useEffect(() => {
     if (done) return;
@@ -140,14 +152,14 @@ export function UncoverMusic() {
     return () => clearInterval(id);
   }, [done]);
 
+  useEffect(() => () => {
+    if (pendingFlip.current != null) window.clearTimeout(pendingFlip.current);
+  }, []);
+
   useEffect(() => {
     if (done || left > 0) return;
-    setDone(true);
-    sfxLose();
-    const pts = matched.length * 6;
-    addDb(pts);
-    setToast(`Time. +${pts} dB`);
-  }, [left, done, matched.length, addDb, setToast]);
+    finish(false, matched.length * 6);
+  }, [left, done, matched.length, finish]);
 
   const flip = (i: number) => {
     if (lock || done || open.includes(i) || matched.includes(deck[i]!)) return;
@@ -158,15 +170,14 @@ export function UncoverMusic() {
       setLock(true);
       const [a, b] = next;
       const same = deck[a!] === deck[b!];
-      window.setTimeout(() => {
+      pendingFlip.current = window.setTimeout(() => {
+        pendingFlip.current = null;
+        if (settled.current) return;
         if (same) {
           const m = [...matched, deck[a!]!];
           setMatched(m);
           if (m.length === PAIRS.length) {
-            setDone(true);
-            sfxWin();
-            addDb(48);
-            setToast("+48 dB — full set");
+            finish(true, 48);
           }
         }
         setOpen([]);

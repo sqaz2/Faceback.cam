@@ -121,7 +121,7 @@ export function MixerPanel() {
                 setToast("Pick at least one clip.");
                 return;
               }
-              addDisc({
+              const replaced = addDisc({
                 id: `${Date.now()}`,
                 name: title.trim() || "Untitled Mix",
                 genre: mix.genre,
@@ -129,7 +129,7 @@ export function MixerPanel() {
                 createdAt: Date.now(),
               });
               sfxWin();
-              setToast("Disc burned. Play it on a stage or jukebox.");
+              setToast(replaced ? "Disc burned. Your oldest disc was replaced." : "Disc burned. Play it on a stage or jukebox.");
             }}
           >
             <Flame className="size-4" />
