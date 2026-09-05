@@ -15,6 +15,8 @@ let vinylBuf: AudioBuffer | null = null;
 let loungeTimer: number | null = null;
 let loungeOn = false;
 let vinylSrc: AudioBufferSourceNode | null = null;
+const VISIBLE_LOOKAHEAD = 1.4;
+const HIDDEN_LOOKAHEAD = 3.5;
 
 export function getCtx(): AudioContext | null {
   return ctx;
@@ -1002,14 +1004,27 @@ function scheduleBar(start: number, dest: AudioNode, barIndex: number) {
 
 function pump() {
   if (!ctx || !mix.playing || !destMusic()) return;
+  if (mix.timer != null) {
+    window.clearTimeout(mix.timer);
+    mix.timer = null;
+  }
   const now = ctx.currentTime;
   const bar = (60 / bpmOf()) * 4;
-  while (mix.nextBar < now + 0.32) {
+  // Background tabs often receive timers only once per second. Keep enough
+  // Web Audio queued to bridge that throttle, then skip stale bars after a
+  // suspended context resumes instead of firing them all at once.
+  if (mix.nextBar < now - 0.1) {
+    const skipped = Math.ceil((now + 0.05 - mix.nextBar) / bar);
+    mix.nextBar += skipped * bar;
+    mix.barIndex += skipped;
+  }
+  const lookahead = document.visibilityState === "hidden" ? HIDDEN_LOOKAHEAD : VISIBLE_LOOKAHEAD;
+  while (mix.nextBar < now + lookahead) {
     scheduleBar(mix.nextBar, destMusic()!, mix.barIndex);
     mix.nextBar += bar;
     mix.barIndex += 1;
   }
-  mix.timer = window.setTimeout(pump, 50);
+  mix.timer = window.setTimeout(pump, document.visibilityState === "hidden" ? 500 : 100);
 }
 
 export function startMix() {
@@ -1110,8 +1125,12 @@ export function stopLounge() {
 
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && ctx?.state === "suspended") {
-      void ctx.resume();
+    if (ctx?.state === "suspended") {
+      void ctx.resume().then(() => {
+        if (mix.playing) pump();
+      }).catch(() => undefined);
+    } else if (mix.playing) {
+      pump();
     }
   });
 }
