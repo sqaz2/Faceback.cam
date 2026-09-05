@@ -20,7 +20,6 @@ import {
   clickWorld,
   occupySeat,
   pickupAt,
-  placeAt,
   player,
   playerSay,
   setHover,
@@ -51,8 +50,9 @@ export function WorldView() {
   const sprites = useRef<SpriteMap | null>(null);
   const overlay = useGame((s) => s.overlay);
   const placing = useGame((s) => s.placing);
+  const inventory = useGame((s) => s.inventory);
   const setOverlay = useGame((s) => s.setOverlay);
-  const spendItem = useGame((s) => s.spendItem);
+  const placeOwnedItem = useGame((s) => s.placeOwnedItem);
   const grantItem = useGame((s) => s.grantItem);
   const setStudio = useGame((s) => s.setStudio);
   const setPlacing = useGame((s) => s.setPlacing);
@@ -132,11 +132,15 @@ export function WorldView() {
           unlockAudio();
           const p = toWorld(e);
           if (placing) {
+            const available = inventory[placing] ?? 0;
+            if (available <= 0) {
+              setPlacing(null);
+              setToast("You don't have another one.");
+              return;
+            }
             const tx = Math.floor(p.x / TILE_W + p.y / TILE_H);
             const ty = Math.floor(p.y / TILE_H - p.x / TILE_W);
-            if (placeAt(placing, tx, ty)) {
-              spendItem(placing);
-              setStudio(studioFurniture());
+            if (placeOwnedItem(placing, tx, ty)) {
               setToast("Placed.");
               sfxClick();
             } else {

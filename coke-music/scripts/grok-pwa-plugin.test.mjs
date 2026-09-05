@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as createHeadInjectorRaw,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadRaw,
   isDocumentPath,
   isInstallQuery,
   renderWebManifest,
@@ -18,6 +18,11 @@ import {
 import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const EMPTY_ROOT = mkdtempSync(join(tmpdir(), "grok-pwa-tests-"));
+const injectGrokPwaHead = (html, context = {}) =>
+  injectGrokPwaHeadRaw(html, { cwd: EMPTY_ROOT, ...context });
+const createHeadInjector = (context = {}) =>
+  createHeadInjectorRaw({ cwd: EMPTY_ROOT, ...context });
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");
@@ -409,4 +414,3 @@ test("vite plugin bakes og identity as a virtual module", () => {
   assert.match(plugin, /virtual:grok-og-identity/);
   assert.match(plugin, /snapshotOgIdentity/);
 });
-

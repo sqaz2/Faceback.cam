@@ -84,8 +84,11 @@ function Splash() {
             variant={hasSave ? "cream" : "primary"}
             onClick={() => {
               unlockAudio();
-              if (hasSave) reset();
-              else setScreen("create");
+              if (hasSave) {
+                if (window.confirm("Start a new V-Ego? Your current local save will be deleted.")) reset();
+              } else {
+                setScreen("create");
+              }
             }}
           >
             {hasSave ? "New V-Ego" : "Enter the studios"}
@@ -106,7 +109,7 @@ function CreateVego() {
 
   useEffect(() => {
     let raf = 0;
-    let t0 = performance.now();
+    const t0 = performance.now();
     const loop = (now: number) => {
       const t = (now - t0) / 1000;
       if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "idle");
@@ -383,7 +386,7 @@ function Wardrobe() {
 
   useEffect(() => {
     let raf = 0;
-    let t0 = performance.now();
+    const t0 = performance.now();
     const loop = (now: number) => {
       const t = (now - t0) / 1000;
       if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "dance");

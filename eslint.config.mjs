@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "coke-music/**",
     "next-env.d.ts",
   ]),
   {
