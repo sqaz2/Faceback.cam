@@ -46,7 +46,8 @@ function isPlacedItem(value: unknown): value is PlacedItem {
     && typeof value.catalogId === "string"
     && Boolean(CATALOG_MAP[value.catalogId])
     && Number.isInteger(value.x)
-    && Number.isInteger(value.y);
+    && Number.isInteger(value.y)
+    && (value.rot === undefined || (Number.isInteger(value.rot) && Number(value.rot) >= 0 && Number(value.rot) <= 7));
 }
 
 function isMix(value: unknown): value is Mix {
@@ -101,6 +102,8 @@ interface GameState {
   chat: ChatLine[];
   toast: string | null;
   placing: string | null;
+  /** Placement rotation step while placing (0..3 or 0..7). */
+  placingRot: number;
   muted: boolean;
   hydrate: () => void;
   persist: () => boolean;
@@ -114,9 +117,11 @@ interface GameState {
   buy: (id: string, price: number) => boolean;
   grantItem: (id: string) => void;
   spendItem: (id: string) => boolean;
-  placeOwnedItem: (id: string, x: number, y: number) => boolean;
+  placeOwnedItem: (id: string, x: number, y: number, rot?: number) => boolean;
   addDisc: (m: Mix) => boolean;
   setPlacing: (id: string | null) => void;
+  setPlacingRot: (rot: number) => void;
+  cyclePlacingRot: () => void;
   setStudio: (f: PlacedItem[]) => void;
   pushChat: (name: string, text: string, self?: boolean) => void;
   setToast: (t: string | null) => void;
@@ -186,6 +191,7 @@ export const useGame = create<GameState>((set, get) => ({
   chat: [],
   toast: null,
   placing: null,
+  placingRot: 0,
   muted: false,
   hydrate: () => {
     const s = load();
@@ -284,6 +290,7 @@ export const useGame = create<GameState>((set, get) => ({
       lastRoom: s.lastRoom,
       seenHelp: s.seenHelp,
       placing: null,
+      placingRot: 0,
     });
     setPlayerLook(normalizeAppearance(s.appearance), s.name);
     return get().persist() ? "ok" : "unsaved";
@@ -324,14 +331,16 @@ export const useGame = create<GameState>((set, get) => ({
     get().persist();
     return true;
   },
-  placeOwnedItem: (id, x, y) => {
+  placeOwnedItem: (id, x, y, rot) => {
     const s = get();
     const count = s.inventory[id] ?? 0;
-    if (count <= 0 || !placeAt(id, x, y)) return false;
+    const useRot = rot ?? s.placingRot;
+    if (count <= 0 || !placeAt(id, x, y, useRot)) return false;
     set({
       inventory: { ...s.inventory, [id]: count - 1 },
       studio: [...studioFurniture()],
       placing: count === 1 ? null : s.placing,
+      placingRot: count === 1 ? 0 : s.placingRot,
     });
     get().persist();
     return true;
@@ -342,7 +351,16 @@ export const useGame = create<GameState>((set, get) => ({
     get().persist();
     return replaced;
   },
-  setPlacing: (placing) => set({ placing, overlay: placing ? null : get().overlay }),
+  setPlacing: (placing) => set({ placing, placingRot: 0, overlay: placing ? null : get().overlay }),
+  setPlacingRot: (placingRot) => set({ placingRot }),
+  cyclePlacingRot: () => {
+    const s = get();
+    if (!s.placing) return;
+    const cat = CATALOG_MAP[s.placing];
+    if (!cat?.rotate) return;
+    const steps = cat.rotate === "360" ? 8 : 4;
+    set({ placingRot: (s.placingRot + 1) % steps });
+  },
   setStudio: (studio) => {
     set({ studio });
     get().persist();
@@ -371,6 +389,7 @@ export const useGame = create<GameState>((set, get) => ({
       lastRoom: id,
       seenHelp: true,
       placing: null,
+      placingRot: 0,
     });
     get().persist();
   },

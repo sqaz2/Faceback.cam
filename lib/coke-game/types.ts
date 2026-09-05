@@ -51,6 +51,8 @@ export interface PlacedItem {
   catalogId: string;
   x: number;
   y: number;
+  /** Quarter-turns (0..3) for rotate "90", or eighths (0..7) for rotate "360". */
+  rot?: number;
 }
 
 export interface Mix {
@@ -79,6 +81,10 @@ export interface CatalogItem {
   price: number;
   w: number;
   d: number;
+  /** Aisle / department id matching CATALOG_SECTIONS. */
+  section: string;
+  /** Preview + placement rotation mode. */
+  rotate?: "90" | "360";
   sit?: boolean;
   seats?: number;
   drink?: boolean;

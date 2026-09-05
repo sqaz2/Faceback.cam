@@ -6,6 +6,7 @@ import {
   Mic2,
   Music2,
   PackageOpen,
+  RotateCw,
   Shirt,
   Volume2,
   VolumeX,
@@ -13,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Button } from "@/components/coke-game/button";
-import { SPRITE_URLS } from "@/lib/coke-game/data";
+import { CATALOG_MAP, SPRITE_URLS, furnitureSpriteUrl } from "@/lib/coke-game/data";
 import { renderWorld, type SpriteMap } from "@/lib/coke-game/draw";
 import { setMuted as setAudioMuted, sfxClick, unlockAudio } from "@/lib/coke-game/audio";
 import { useGame } from "@/lib/coke-game/store";
@@ -24,6 +25,7 @@ import {
   pickupAt,
   player,
   playerSay,
+  selectedFurniture,
   setHover,
   setPlayerAction,
   setPlayerLook,
@@ -32,6 +34,7 @@ import {
   tick,
   TILE_H,
   TILE_W,
+  useSelectedFurniture,
   world,
 } from "@/lib/coke-game/world";
 import { cn } from "@/lib/utils";
@@ -41,11 +44,16 @@ let sharedSprites: SpriteMap | null = null;
 function loadSprites(): SpriteMap {
   if (sharedSprites) return sharedSprites;
   const map: SpriteMap = {};
-  for (const [id, url] of Object.entries(SPRITE_URLS)) {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = url;
-    map[id] = img;
+  for (const id of Object.keys(SPRITE_URLS)) {
+    for (let facing = 0; facing < 4; facing++) {
+      const key = `${id}_d${facing}`;
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = furnitureSpriteUrl(id, facing);
+      map[key] = img;
+      // Base id aliases to d0 (existing `${sprite}.png`).
+      if (facing === 0) map[id] = img;
+    }
   }
   sharedSprites = map;
   return sharedSprites;
@@ -56,12 +64,14 @@ export function WorldView() {
   const sprites = useRef<SpriteMap | null>(null);
   const overlay = useGame((s) => s.overlay);
   const placing = useGame((s) => s.placing);
+  const placingRot = useGame((s) => s.placingRot);
   const inventory = useGame((s) => s.inventory);
   const setOverlay = useGame((s) => s.setOverlay);
   const placeOwnedItem = useGame((s) => s.placeOwnedItem);
   const grantItem = useGame((s) => s.grantItem);
   const setStudio = useGame((s) => s.setStudio);
   const setPlacing = useGame((s) => s.setPlacing);
+  const cyclePlacingRot = useGame((s) => s.cyclePlacingRot);
   const setToast = useGame((s) => s.setToast);
   const muted = useGame((s) => s.muted);
   const setMuted = useGame((s) => s.setMuted);
@@ -72,6 +82,8 @@ export function WorldView() {
   const roomName = world.room.name;
   const inputRef = useRef<HTMLInputElement>(null);
   const [packing, setPacking] = useState(false);
+  const [selectedFurnId, setSelectedFurnId] = useState<string | null>(null);
+  const selectedFurnIdRef = useRef<string | null>(null);
   const overlayRef = useRef(overlay);
   const placingRef = useRef(placing);
   const renderFailed = useRef(false);
@@ -101,6 +113,10 @@ export function WorldView() {
       const dt = (now - last) / 1000;
       last = now;
       if (!overlayRef.current) tick(dt);
+      if (world.selectedFurnId !== selectedFurnIdRef.current) {
+        selectedFurnIdRef.current = world.selectedFurnId;
+        setSelectedFurnId(world.selectedFurnId);
+      }
       const ctx = canvas.getContext("2d");
       if (ctx) {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -149,6 +165,14 @@ export function WorldView() {
         aria-label="FACEBACK.CAM room. Use arrow keys or W A S D to walk; use the controls below to interact."
         onKeyDown={(event) => {
           const key = event.key.toLowerCase();
+          if (key === "r" && placing) {
+            const cat = CATALOG_MAP[placing];
+            if (cat?.rotate) {
+              event.preventDefault();
+              cyclePlacingRot();
+              return;
+            }
+          }
           const direction = key === "arrowup" || key === "w" ? [0, -1]
             : key === "arrowdown" || key === "s" ? [0, 1]
               : key === "arrowleft" || key === "a" ? [-1, 0]
@@ -198,6 +222,8 @@ export function WorldView() {
             return;
           }
           clickWorld(p.x, p.y);
+          selectedFurnIdRef.current = world.selectedFurnId;
+          setSelectedFurnId(world.selectedFurnId);
         }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -226,11 +252,23 @@ export function WorldView() {
       </header>
 
       {(placing || packing) && (
-        <div className="absolute left-1/2 top-16 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center rounded-full border border-border bg-ink/85 px-4 py-2 text-sm text-cream backdrop-blur-sm">
-          {packing ? "Tap furniture to pack it" : "Tap a tile to place"}
+        <div className="absolute left-1/2 top-16 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-ink/85 px-4 py-2 text-sm text-cream backdrop-blur-sm">
+          <span>{packing ? "Tap furniture to pack it" : "Tap a tile to place"}</span>
+          {placing && CATALOG_MAP[placing]?.rotate && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-ink-mid px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-foam hover:border-coke"
+              onClick={() => cyclePlacingRot()}
+              title="Rotate (R)"
+            >
+              <RotateCw className="size-3.5" />
+              Rotate
+              <span className="tabular-nums text-muted">{placingRot}</span>
+            </button>
+          )}
           <button
             type="button"
-            className="ml-3 text-coke"
+            className="text-coke"
             onClick={() => {
               setPlacing(null);
               setPacking(false);
@@ -263,6 +301,46 @@ export function WorldView() {
           ))}
         </ul>
       </div>
+
+
+      {selectedFurnId && (() => {
+        const furn = selectedFurniture();
+        const cat = furn ? CATALOG_MAP[furn.catalogId] : undefined;
+        if (!furn || !cat) return null;
+        const canUse = !!(cat.sit || cat.drink || cat.music || cat.stage);
+        return (
+          <div className="pointer-events-auto absolute bottom-36 right-3 z-20 w-[min(100%-1.5rem,16rem)] rounded-[16px] border border-border bg-ink/90 p-3 shadow-lg backdrop-blur-sm sm:bottom-28">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Furniture</p>
+            <p className="mt-0.5 text-sm font-semibold text-foam">{cat.name}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-muted">{cat.desc}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="ink"
+                onClick={() => {
+                  sfxClick();
+                  setOverlay("catalog");
+                }}
+              >
+                Catalogue
+              </Button>
+              {canUse && (
+                <Button
+                  size="sm"
+                  variant="cream"
+                  onClick={() => {
+                    sfxClick();
+                    unlockAudio();
+                    useSelectedFurniture();
+                  }}
+                >
+                  Use
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       <footer className="absolute inset-x-0 bottom-0 z-10 border-t border-border bg-ink/90 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-sm">
         <form

@@ -1,5 +1,11 @@
 import type { Appearance, CatalogItem, RoomDef } from "./types";
 
+export interface CatalogSection {
+  id: string;
+  label: string;
+  blurb?: string;
+}
+
 export const SKINS = ["#F7D3B0", "#E8B889", "#C4844A", "#8D5524", "#5A3216", "#FBE4D4"];
 export const HAIR_COLORS = ["#1A1210", "#3B2218", "#6B3A1F", "#C45A22", "#D4B483", "#E61A27", "#1F3A5F", "#F4E8DC"];
 export const CLOTH_COLORS = [
@@ -35,28 +41,47 @@ export const DEFAULT_APPEARANCE: Appearance = {
   accessory: 0,
 };
 
+export const CATALOG_SECTIONS: CatalogSection[] = [
+  { id: "seating", label: "Seating", blurb: "Sofas, chairs, stools" },
+  { id: "tables", label: "Tables & surfaces", blurb: "Cafe tables and tops" },
+  { id: "lighting", label: "Lighting", blurb: "Lamps and glow" },
+  { id: "decor", label: "Home decor & plants", blurb: "Greenery and accents" },
+  { id: "floor", label: "Rugs & flooring", blurb: "Soft underfoot" },
+  { id: "kitchen", label: "Kitchen & drinks", blurb: "Fridges, crates, cola" },
+  { id: "audio", label: "Audio & entertainment", blurb: "Speakers, screens, jukebox" },
+  { id: "stage", label: "Stage & performance", blurb: "Mic, stage, disco" },
+];
+
 export const CATALOG: CatalogItem[] = [
-  { id: "sofa", name: "Velvet Sofa", price: 90, w: 2, d: 1, sit: true, seats: 2, sitY: 0.04, sitLift: 12, sitSpread: 0.95, sprite: "sofa", desc: "Two-seat red velvet — sit next to someone." },
-  { id: "chair", name: "Lounge Chair", price: 40, w: 1, d: 1, sit: true, seats: 1, sitY: 0.08, sitLift: 16, sprite: "chair", desc: "A single plush seat." },
-  { id: "table", name: "Cafe Table", price: 35, w: 1, d: 1, sprite: "table", desc: "Round cream tabletop." },
-  { id: "lamp", name: "Floor Lamp", price: 28, w: 1, d: 1, sprite: "lamp", desc: "Warm pool of light." },
-  { id: "plant", name: "Palm Plant", price: 22, w: 1, d: 1, sprite: "plant", desc: "A little tropical energy." },
-  { id: "speaker", name: "Club Speaker", price: 55, w: 1, d: 1, sprite: "speaker", desc: "Moves air. And furniture." },
-  { id: "bean", name: "Bean Bag", price: 30, w: 1, d: 1, sit: true, seats: 1, sitY: 0.22, sitLift: -2, sprite: "bean", desc: "Low, slouchy, forever." },
-  { id: "fridge", name: "Mini Fridge", price: 70, w: 1, d: 1, drink: true, sprite: "fridge", desc: "Always stocked. Somehow." },
-  { id: "vending", name: "Cola Machine", price: 120, w: 1, d: 1, drink: true, sprite: "vending", desc: "Ice-cold. Earns decibels." },
-  { id: "jukebox", name: "Room Player", price: 150, w: 1, d: 1, music: true, sprite: "jukebox", desc: "Send a published mix to the room." },
-  { id: "disco", name: "Disco Ball", price: 80, w: 1, d: 1, hang: true, block: false, sprite: "disco", desc: "Every room needs one." },
-  { id: "crate", name: "Bottle Crate", price: 18, w: 1, d: 1, drink: true, sprite: "crate", desc: "Grab a classic." },
-  { id: "stage", name: "Stage Block", price: 160, w: 2, d: 2, stage: true, block: false, sprite: "stage", desc: "Perform your mix." },
-  { id: "rug", name: "Studio Rug", price: 24, w: 2, d: 2, floor: true, desc: "Softens the diamond floor." },
-  { id: "tv", name: "Lounge TV", price: 65, w: 1, d: 1, sprite: "tv", desc: "Music videos, probably." },
-  { id: "stool", name: "Bar Stool", price: 20, w: 1, d: 1, sit: true, seats: 1, sitY: 0.1, sitLift: 14, sprite: "stool", desc: "Perch and people-watch." },
-  { id: "booth", name: "Diner Booth", price: 100, w: 2, d: 1, sit: true, seats: 2, sitY: 0.1, sitLift: 8, sitSpread: 0.9, sprite: "booth", desc: "Corner booth — room for two." },
-  { id: "mic", name: "Mic Stand", price: 45, w: 1, d: 1, stage: true, sprite: "mic", desc: "Tap to perform." },
+  { id: "sofa", name: "Velvet Sofa", price: 90, w: 2, d: 1, section: "seating", rotate: "90", sit: true, seats: 2, sitY: 0.1, sitLift: 20, sitSpread: 0.95, sprite: "sofa", desc: "Two-seat red velvet — sit next to someone." },
+  { id: "chair", name: "Lounge Chair", price: 40, w: 1, d: 1, section: "seating", rotate: "90", sit: true, seats: 1, sitY: 0.08, sitLift: 16, sprite: "chair", desc: "A single plush seat." },
+  { id: "booth", name: "Diner Booth", price: 100, w: 2, d: 1, section: "seating", rotate: "90", sit: true, seats: 2, sitY: 0.1, sitLift: 8, sitSpread: 0.9, sprite: "booth", desc: "Corner booth — room for two." },
+  { id: "stool", name: "Bar Stool", price: 20, w: 1, d: 1, section: "seating", rotate: "360", sit: true, seats: 1, sitY: 0.1, sitLift: 14, sprite: "stool", desc: "Perch and people-watch." },
+  { id: "bean", name: "Bean Bag", price: 30, w: 1, d: 1, section: "seating", rotate: "360", sit: true, seats: 1, sitY: 0.22, sitLift: -2, sprite: "bean", desc: "Low, slouchy, forever." },
+  { id: "table", name: "Cafe Table", price: 35, w: 1, d: 1, section: "tables", rotate: "360", sprite: "table", desc: "Round cream tabletop." },
+  { id: "lamp", name: "Floor Lamp", price: 28, w: 1, d: 1, section: "lighting", rotate: "360", sprite: "lamp", desc: "Warm pool of light." },
+  { id: "plant", name: "Palm Plant", price: 22, w: 1, d: 1, section: "decor", rotate: "360", sprite: "plant", desc: "A little tropical energy." },
+  { id: "rug", name: "Studio Rug", price: 24, w: 2, d: 2, section: "floor", rotate: "90", floor: true, desc: "Softens the diamond floor." },
+  { id: "fridge", name: "Mini Fridge", price: 70, w: 1, d: 1, section: "kitchen", rotate: "90", drink: true, sprite: "fridge", desc: "Always stocked. Somehow." },
+  { id: "vending", name: "Cola Machine", price: 120, w: 1, d: 1, section: "kitchen", rotate: "90", drink: true, sprite: "vending", desc: "Ice-cold. Earns decibels." },
+  { id: "crate", name: "Bottle Crate", price: 18, w: 1, d: 1, section: "kitchen", rotate: "360", drink: true, sprite: "crate", desc: "Grab a classic." },
+  { id: "speaker", name: "Club Speaker", price: 55, w: 1, d: 1, section: "audio", rotate: "90", sprite: "speaker", desc: "Moves air. And furniture." },
+  { id: "tv", name: "Lounge TV", price: 65, w: 1, d: 1, section: "audio", rotate: "90", sprite: "tv", desc: "Music videos, probably." },
+  { id: "jukebox", name: "Room Player", price: 150, w: 1, d: 1, section: "audio", rotate: "90", music: true, sprite: "jukebox", desc: "Send a published mix to the room." },
+  { id: "disco", name: "Disco Ball", price: 80, w: 1, d: 1, section: "stage", rotate: "360", hang: true, block: false, sprite: "disco", desc: "Every room needs one." },
+  { id: "stage", name: "Stage Block", price: 160, w: 2, d: 2, section: "stage", rotate: "90", stage: true, block: false, sprite: "stage", desc: "Perform your mix." },
+  { id: "mic", name: "Mic Stand", price: 45, w: 1, d: 1, section: "stage", rotate: "90", stage: true, sprite: "mic", desc: "Tap to perform." },
 ];
 
 export const CATALOG_MAP = Object.fromEntries(CATALOG.map((c) => [c.id, c]));
+
+/** Group catalogue items by CATALOG_SECTIONS order (empty sections omitted). */
+export function catalogBySection(): { section: CatalogSection; items: CatalogItem[] }[] {
+  return CATALOG_SECTIONS.map((section) => ({
+    section,
+    items: CATALOG.filter((c) => c.section === section.id),
+  })).filter((g) => g.items.length > 0);
+}
 
 export const ROOMS: RoomDef[] = [
   {
@@ -365,23 +390,23 @@ export function randomAppearance(seed = Math.random()): Appearance {
 }
 
 export const SPRITE_URLS: Record<string, string> = {
-  sofa: "/coke-music/art/furniture/sofa.png?v=6",
-  chair: "/coke-music/art/furniture/chair.png?v=6",
-  plant: "/coke-music/art/furniture/plant.png?v=6",
-  speaker: "/coke-music/art/furniture/speaker.png?v=6",
-  vending: "/coke-music/art/furniture/vending.png?v=6",
-  jukebox: "/coke-music/art/furniture/jukebox.png?v=6",
-  disco: "/coke-music/art/furniture/disco.png?v=6",
-  crate: "/coke-music/art/furniture/crate.png?v=6",
-  table: "/coke-music/art/furniture/table.png?v=6",
-  lamp: "/coke-music/art/furniture/lamp.png?v=6",
-  bean: "/coke-music/art/furniture/bean.png?v=6",
-  fridge: "/coke-music/art/furniture/fridge.png?v=6",
-  stool: "/coke-music/art/furniture/stool.png?v=6",
-  mic: "/coke-music/art/furniture/mic.png?v=6",
-  booth: "/coke-music/art/furniture/booth.png?v=6",
-  stage: "/coke-music/art/furniture/stage.png?v=6",
-  tv: "/coke-music/art/furniture/tv.png?v=6",
+  sofa: "/art/furniture/sofa.png?v=6",
+  chair: "/art/furniture/chair.png?v=6",
+  plant: "/art/furniture/plant.png?v=6",
+  speaker: "/art/furniture/speaker.png?v=6",
+  vending: "/art/furniture/vending.png?v=6",
+  jukebox: "/art/furniture/jukebox.png?v=6",
+  disco: "/art/furniture/disco.png?v=6",
+  crate: "/art/furniture/crate.png?v=6",
+  table: "/art/furniture/table.png?v=6",
+  lamp: "/art/furniture/lamp.png?v=6",
+  bean: "/art/furniture/bean.png?v=6",
+  fridge: "/art/furniture/fridge.png?v=6",
+  stool: "/art/furniture/stool.png?v=6",
+  mic: "/art/furniture/mic.png?v=6",
+  booth: "/art/furniture/booth.png?v=6",
+  stage: "/art/furniture/stage.png?v=6",
+  tv: "/art/furniture/tv.png?v=6",
 };
 
 export const AVATAR_URLS: Record<string, Record<string, string>> = {
