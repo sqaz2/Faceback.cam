@@ -34,7 +34,7 @@ import {
   tick,
   TILE_H,
   TILE_W,
-  useSelectedFurniture,
+  activateSelectedFurniture,
   world,
 } from "@/lib/coke-game/world";
 import { cn } from "@/lib/utils";
@@ -331,7 +331,7 @@ export function WorldView() {
                   onClick={() => {
                     sfxClick();
                     unlockAudio();
-                    useSelectedFurniture();
+                    activateSelectedFurniture();
                   }}
                 >
                   Use
