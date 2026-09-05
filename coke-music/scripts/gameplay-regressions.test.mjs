@@ -66,6 +66,23 @@ test("malformed saves are rejected instead of hydrating partial state", () => {
   assert.ok(useGame.getState().inventory);
 });
 
+test("a valid backup recovers a damaged primary save", () => {
+  const valid = useGame.getState().exportSave();
+  saved.set("coke-music-v1", "{damaged");
+  saved.set("coke-music-v1-backup", valid);
+  useGame.getState().hydrate();
+  assert.equal(useGame.getState().hasSave, true);
+  assert.deepEqual(JSON.parse(saved.get("coke-music-v1")), JSON.parse(valid));
+});
+
+test("storage denial is reported instead of pretending progress saved", () => {
+  const setItem = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = () => { throw new Error("quota"); };
+  assert.equal(useGame.getState().persist(), false);
+  assert.equal(useGame.getState().toast, "Progress could not be saved on this device.");
+  globalThis.localStorage.setItem = setItem;
+});
+
 test("one-tile movement arrives across low and high frame rates", () => {
   for (const fps of [60, 30, 20, 15, 10]) {
     const actor = studio();
@@ -117,4 +134,19 @@ test("owned furniture placement cannot duplicate the last inventory item", () =>
   assert.equal(useGame.getState().inventory.chair, 0);
   assert.equal(worldModule.world.furniture.filter((item) => item.catalogId === "chair").length, 1);
   assert.equal(useGame.getState().placing, null);
+});
+
+test("performance requires a disc and stage, then awards only once", () => {
+  const actor = studio([{ id: "stage", catalogId: "stage", x: 3, y: 3 }]);
+  actor.x = 4;
+  actor.y = 4;
+  useGame.setState({ discs: [] });
+  assert.equal(worldModule.startPerformance(), false);
+  useGame.setState({
+    discs: [{ id: "disc", name: "Test", genre: "pop", clips: ["four", null, null, null], createdAt: 1 }],
+    db: 0,
+  });
+  assert.equal(worldModule.startPerformance(), true);
+  for (let i = 0; i < 600; i += 1) worldModule.tick(0.1);
+  assert.equal(useGame.getState().db, 12);
 });

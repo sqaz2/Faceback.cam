@@ -40,6 +40,7 @@ function ensureAvatarSheets() {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.decoding = "async";
+    img.addEventListener("load", () => frameCache.clear());
     img.src = url;
     (s as unknown as Record<string, HTMLImageElement>)[k] = img;
   }
@@ -444,6 +445,7 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
   const r = sitting ? 16 : 18;
   const topC = CLOTH_COLORS[a.topColor] ?? CLOTH_COLORS[0]!;
   const botC = CLOTH_COLORS[a.bottomColor] ?? CLOTH_COLORS[2]!;
+  const skinC = SKINS[a.skin] ?? SKINS[0]!;
   const sh = ensureAvatarSheets();
   ctx.save();
   if (facingLeft(dir)) {
@@ -452,7 +454,11 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
     ctx.translate(-hx, 0);
   }
 
-  if (a.top === 2) {
+  if (a.top === 1) {
+    ctx.fillStyle = skinC;
+    oval(ctx, hx - 13, hy + 20, 4.5, 9, skinC);
+    oval(ctx, hx + 13, hy + 20, 4.5, 9, skinC);
+  } else if (a.top === 2) {
     ctx.strokeStyle = shade(topC, -25);
     ctx.lineWidth = 5;
     ctx.lineCap = "round";
@@ -475,7 +481,11 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
     ctx.fill();
   }
 
-  if (a.bottom === 2 && !sitting) {
+  if (a.bottom === 1 && !sitting) {
+    ctx.fillStyle = skinC;
+    ctx.fillRect(hx - 12, 72, 8, 10);
+    ctx.fillRect(hx + 4, 72, 8, 10);
+  } else if (a.bottom === 2 && !sitting) {
     ctx.fillStyle = botC;
     ctx.beginPath();
     ctx.moveTo(hx - 10, 62);
@@ -522,14 +532,14 @@ function composeAvatar(
   a: Appearance,
   dir: number,
   action: Actor["action"],
-  phase: number,
 ): HTMLCanvasElement | null {
   const sh = ensureAvatarSheets();
   const bodyImg =
     action === "sit" ? sh.sit : action === "walk" ? sh.walk : action === "dance" || action === "wave" ? sh.dance : sh.idle;
   if (!bodyImg.complete || bodyImg.naturalWidth < 8) return null;
-  const key = `${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoeColor}-${a.accessory}-${action}-${dir}-${Math.floor(phase) % 4}`;
-  const wardrobeReady = sheetReady(sh.hair);
+  const key = `${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoeColor}-${a.accessory}-${action}-${dir}`;
+  const wardrobeReady = sheetReady(sh.hair)
+    && (a.accessory === 0 || a.accessory === 3 || sheetReady(sh.acc));
   const hit = frameCache.get(key);
   if (hit && wardrobeReady) return hit;
 
@@ -1031,15 +1041,28 @@ export function drawAppearance(
   t: number,
   sitLift = 0,
 ) {
+  // The supplied image sheets do not include distinct wave or drink frames;
+  // use the authored procedural poses so those actions remain visually honest.
+  if (action === "wave" || action === "drink") {
+    drawChibi(ctx, a, ox, oy - sitLift, dir, action, phase, t);
+    return;
+  }
   try {
-    const frame = composeAvatar(a, dir, action, phase);
+    const frame = composeAvatar(a, dir, action);
     if (frame) {
-      const bob = action === "dance" ? Math.abs(Math.sin(t * 10)) * 3 : action === "walk" ? Math.sin(phase) * 2 : 0;
+      const bob = action === "dance" ? Math.abs(Math.sin(t * 10)) * 3 : action === "walk" ? Math.abs(Math.sin(phase)) * 2.5 : 0;
+      const sway = action === "walk" ? Math.sin(phase) * 0.035 : action === "dance" ? Math.sin(t * 8) * 0.07 : Math.sin(t * 1.8) * 0.012;
+      const breathe = action === "idle" ? 1 + Math.sin(t * 2.2) * 0.012 : 1;
       const sitting = action === "sit";
       const h = sitting ? 70 : 78;
       const w = (frame.width / frame.height) * h;
       const foot = sitting ? 6 : 10;
-      ctx.drawImage(frame, ox - w / 2, oy - h + foot - sitLift - bob, w, h);
+      ctx.save();
+      ctx.translate(ox, oy + foot - sitLift - bob);
+      ctx.rotate(sway);
+      ctx.scale(1, breathe);
+      ctx.drawImage(frame, -w / 2, -h, w, h);
+      ctx.restore();
       return;
     }
   } catch {
@@ -1086,6 +1109,7 @@ export function renderWorld(
   height: number,
   sprites: SpriteMap,
   placing?: string | null,
+  reducedMotion = false,
 ) {
   ensureAvatarSheets();
   ctx.clearRect(0, 0, width, height);
@@ -1148,7 +1172,17 @@ export function renderWorld(
       const s = tileToScreen(a.x, a.y);
       const furn = a.sitId ? world.furniture.find((f) => f.id === a.sitId) : undefined;
       const lift = a.action === "sit" ? seatLiftPx(furn) : 0;
-      drawAppearance(ctx, a.appearance, s.x, s.y, a.dir, a.action, a.walkPhase, world.time, lift);
+      drawAppearance(
+        ctx,
+        a.appearance,
+        s.x,
+        s.y,
+        a.dir,
+        a.action,
+        reducedMotion ? 0 : a.walkPhase,
+        reducedMotion ? 0 : world.time,
+        lift,
+      );
       drawName(ctx, s.x, s.y - lift + (a.action === "sit" ? -8 : 0), a.name, a.isPlayer);
       if (a.bubble && a.bubble.until > world.time) {
         drawBubble(ctx, s.x, s.y - lift - (a.action === "sit" ? 48 : 58), a.bubble.text);
@@ -1207,4 +1241,3 @@ export function renderAvatarPreview(
   }
   ctx.restore();
 }
-

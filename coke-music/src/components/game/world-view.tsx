@@ -19,6 +19,7 @@ import { setMuted as setAudioMuted, sfxClick, unlockAudio } from "@/lib/game/aud
 import { useGame } from "@/lib/game/store";
 import {
   clickWorld,
+  movePlayerBy,
   occupySeat,
   pickupAt,
   player,
@@ -35,7 +36,10 @@ import {
 } from "@/lib/game/world";
 import { cn } from "@/lib/utils";
 
+let sharedSprites: SpriteMap | null = null;
+
 function loadSprites(): SpriteMap {
+  if (sharedSprites) return sharedSprites;
   const map: SpriteMap = {};
   for (const [id, url] of Object.entries(SPRITE_URLS)) {
     const img = new Image();
@@ -43,7 +47,8 @@ function loadSprites(): SpriteMap {
     img.src = url;
     map[id] = img;
   }
-  return map;
+  sharedSprites = map;
+  return sharedSprites;
 }
 
 export function WorldView() {
@@ -67,6 +72,14 @@ export function WorldView() {
   const roomName = world.room.name;
   const inputRef = useRef<HTMLInputElement>(null);
   const [packing, setPacking] = useState(false);
+  const overlayRef = useRef(overlay);
+  const placingRef = useRef(placing);
+  const renderFailed = useRef(false);
+
+  useEffect(() => {
+    overlayRef.current = overlay;
+    placingRef.current = placing;
+  }, [overlay, placing]);
 
   useEffect(() => {
     sprites.current = loadSprites();
@@ -87,7 +100,7 @@ export function WorldView() {
     const loop = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
-      if (!overlay) tick(dt);
+      if (!overlayRef.current) tick(dt);
       const ctx = canvas.getContext("2d");
       if (ctx) {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -99,16 +112,21 @@ export function WorldView() {
         }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         try {
-          renderWorld(ctx, w, h, sprites.current!, placing);
+          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          renderWorld(ctx, w, h, sprites.current!, placingRef.current, reducedMotion);
+          renderFailed.current = false;
         } catch {
-          /* keep the loop alive */
+          if (!renderFailed.current) {
+            renderFailed.current = true;
+            setToast("The room could not be drawn. Try reopening it.");
+          }
         }
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [overlay, placing]);
+  }, [setToast]);
 
   const toWorld = (e: PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -126,6 +144,20 @@ export function WorldView() {
       <canvas
         ref={canvasRef}
         className="absolute inset-0 size-full touch-none"
+        tabIndex={0}
+        role="application"
+        aria-label="Coke Music room. Use arrow keys or W A S D to walk; use the controls below to interact."
+        onKeyDown={(event) => {
+          const key = event.key.toLowerCase();
+          const direction = key === "arrowup" || key === "w" ? [0, -1]
+            : key === "arrowdown" || key === "s" ? [0, 1]
+              : key === "arrowleft" || key === "a" ? [-1, 0]
+                : key === "arrowright" || key === "d" ? [1, 0]
+                  : null;
+          if (!direction) return;
+          event.preventDefault();
+          movePlayerBy(direction[0]!, direction[1]!);
+        }}
         onPointerMove={(e) => {
           const p = toWorld(e);
           setHover(p.x, p.y);
@@ -215,7 +247,7 @@ export function WorldView() {
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-24 left-3 z-10 max-h-36 w-[min(100%-1.5rem,20rem)] overflow-hidden sm:bottom-28">
+      <div className="pointer-events-none absolute bottom-40 left-3 z-10 max-h-36 w-[min(100%-1.5rem,20rem)] overflow-hidden sm:bottom-28">
         <ul className="flex flex-col gap-1">
           {chat.slice(-5).map((c) => (
             <li
@@ -253,7 +285,7 @@ export function WorldView() {
             Send
           </Button>
         </form>
-        <nav className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-1 overflow-x-auto px-2">
+        <nav className="mx-auto mt-2 grid max-w-3xl grid-cols-5 items-center gap-1 px-2 sm:flex sm:justify-between">
           <IconBtn label="Rooms" onClick={() => setOverlay("nav")}>
             <Map className="size-5" />
           </IconBtn>
@@ -322,7 +354,7 @@ function IconBtn({
         unlockAudio();
         onClick();
       }}
-      className="flex min-w-11 flex-col items-center gap-0.5 rounded-[12px] px-2 py-1 text-cream hover:bg-foam/10"
+      className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[12px] px-1 py-1 text-cream hover:bg-foam/10 sm:min-w-11 sm:px-2"
     >
       {children}
       <span className="text-[10px] font-medium tracking-wide text-muted">{label}</span>
