@@ -1,0 +1,6 @@
+Coke Music split download
+=========================
+1. Unzip coke-music-code.zip
+2. Unzip coke-music-art.zip into the SAME folder so public/ merges in.
+3. npm install && npm run dev
+Read HANDOFF.md first.
