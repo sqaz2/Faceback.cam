@@ -26,7 +26,6 @@ export function OutfitTools() {
     try {
       const stored: unknown = JSON.parse(localStorage.getItem(KEY) || "null");
       // Loading device-owned slots is the effect's external synchronization step.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (Array.isArray(stored)) setSlots([0, 1, 2].map((i) => valid(stored[i]) ? stored[i] : null));
     } catch { setMessage("Saved outfits could not be loaded on this device."); }
   }, []);
