@@ -96,26 +96,31 @@ test("one-tile movement arrives across low and high frame rates", () => {
   }
 });
 
-test("an adjacent chair interaction sits immediately", () => {
+test("adjacent chair: click selects, Use sits when already next to it", () => {
   const actor = studio([{ id: "chair", catalogId: "chair", x: 2, y: 2 }]);
   actor.x = 2.5;
   actor.y = 3.5;
   const click = worldModule.tileToScreen(2.5, 2.5);
   worldModule.clickWorld(click.x, click.y);
+  assert.equal(worldModule.world.selectedFurnId, "chair");
+  assert.equal(actor.action, "idle");
+  assert.equal(worldModule.activateSelectedFurniture(), true);
   assert.equal(actor.action, "sit");
   assert.equal(actor.sitId, "chair");
   assert.equal(worldModule.world.pendingUse, null);
 });
 
-test("placing an obstacle cancels a path before entering the blocked tile", () => {
+test("placing an obstacle deflects before entering the blocked tile", () => {
   const actor = studio();
   actor.x = 0.5;
   actor.y = 0.5;
   actor.path = [{ x: 1, y: 0 }, { x: 2, y: 0 }];
   assert.equal(worldModule.placeAt("chair", 1, 0), true);
   worldModule.tick(1 / 60);
-  assert.equal(actor.path.length, 0);
+  // Deflect clears the blocked route; may queue a one-step aside path.
+  assert.ok(!actor.path.some((step) => step.x === 1 && step.y === 0));
   assert.equal(Math.floor(actor.x), 0);
+  assert.equal(Math.floor(actor.y), 0);
 });
 
 test("picking up an occupied chair also stands its occupant", () => {
