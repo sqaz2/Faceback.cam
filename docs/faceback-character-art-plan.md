@@ -4,7 +4,7 @@
 
 Every character asset uses one adult base character, one isometric camera, one light direction, one 96×96 runtime frame and a shared foot baseline. The master source contains four direction columns (northwest, northeast, southeast, southwest) and four action rows (stand, walk, sit, dance).
 
-`public/coke-music/art/avatar/master-v2.png` and `woman-master-v2.png` are the first two body masters. Their four runtime sheets are slices of those files, not independently generated characters.
+The production masters and fitted layers live under `public/coke-music/art/avatar/generated`. Their runtime sheets are slices of AI-generated 4×4 atlases, not independently drawn canvas shapes.
 
 ## Acceptance rules
 
@@ -13,17 +13,17 @@ Every character asset uses one adult base character, one isometric camera, one l
 - Direction, body size, face, lighting and baseline do not drift between frames.
 - Stand, walk, sit and dance have visibly different poses.
 - A garment must change the silhouette to count as a separate choice. Recolours are colour choices.
-- Hair, clothing and accessories must be generated from this master and tested over every supported direction and action.
-- Every wearable is positioned from measured head, shoulder and hip anchors; fixed screen coordinates are not allowed.
+- Every visible body, hairstyle, garment, shoe and accessory must originate from an AI-generated image sheet. Runtime code may slice, align, recolour and animate those pixels, but it must not draw replacement character art.
+- Every wearable is generated against the matching body master in all four directions and actions, then composited in the same fixed frame grid.
 - Accessories start unequipped. Headphones, shades and hats are optional.
 - Test assets in the normal loaded-asset renderer on a narrow phone viewport before release.
 
 ## Wardrobe production order
 
 1. Base body and four required actions.
-2. Eight hair silhouettes across all directions.
-3. Eight tops, eight bottoms and five shoes, each checked in all actions.
-4. Eight optional accessories with explicit hair compatibility.
+2. Six hair silhouettes across all directions.
+3. Four tops, three bottoms and three shoes, each checked in all actions.
+4. Three optional accessories with explicit hair compatibility.
 5. Additional body builds only after clothing deformation and performance pass.
 
 ## Asset manifest

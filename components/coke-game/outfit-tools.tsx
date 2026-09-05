@@ -4,15 +4,15 @@ import { randomAppearance, TOP_STYLES, BOTTOM_STYLES, CLOTH_COLORS, ACCESSORIES 
 import type { Appearance } from "@/lib/coke-game/types";
 import { Button } from "./button";
 
-type Outfit = Pick<Appearance, "top" | "topColor" | "bottom" | "bottomColor" | "shoeColor" | "accessory">;
-const limits = { top: TOP_STYLES.length, topColor: CLOTH_COLORS.length, bottom: BOTTOM_STYLES.length, bottomColor: CLOTH_COLORS.length, shoeColor: CLOTH_COLORS.length, accessory: ACCESSORIES.length };
+type Outfit = Pick<Appearance, "top" | "topColor" | "bottom" | "bottomColor" | "shoe" | "shoeColor" | "accessory">;
+const limits = { top: TOP_STYLES.length, topColor: CLOTH_COLORS.length, bottom: BOTTOM_STYLES.length, bottomColor: CLOTH_COLORS.length, shoe: 3, shoeColor: CLOTH_COLORS.length, accessory: ACCESSORIES.length };
 function valid(value: unknown): value is Outfit {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
   return Object.entries(limits).every(([key, limit]) => Number.isInteger(item[key]) && Number(item[key]) >= 0 && Number(item[key]) < limit);
 }
 function clothes(a: Appearance): Outfit {
-  return { top: a.top, topColor: a.topColor, bottom: a.bottom, bottomColor: a.bottomColor, shoeColor: a.shoeColor, accessory: a.accessory };
+  return { top: a.top, topColor: a.topColor, bottom: a.bottom, bottomColor: a.bottomColor, shoe: a.shoe ?? 0, shoeColor: a.shoeColor, accessory: a.accessory };
 }
 const KEY = "faceback-coke-outfits-v1";
 export function OutfitTools() {

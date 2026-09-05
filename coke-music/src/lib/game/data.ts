@@ -17,6 +17,7 @@ export const CLOTH_COLORS = [
 export const HAIR_STYLES = ["Crop", "Spikes", "Flow", "Halo", "Tail", "Bangs"];
 export const TOP_STYLES = ["Tee", "Tank", "Hoodie", "Jacket"];
 export const BOTTOM_STYLES = ["Pants", "Shorts", "Skirt"];
+export const SHOE_STYLES = ["Sneakers", "Boots", "High-tops"];
 export const ACCESSORIES = ["None", "Shades", "Headphones", "Cap"];
 export const BODY_STYLES = ["Man", "Woman"];
 
@@ -29,6 +30,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   topColor: 0,
   bottom: 0,
   bottomColor: 2,
+  shoe: 0,
   shoeColor: 2,
   accessory: 0,
 };
@@ -356,6 +358,7 @@ export function randomAppearance(seed = Math.random()): Appearance {
     topColor: Math.floor(r() * CLOTH_COLORS.length),
     bottom: Math.floor(r() * BOTTOM_STYLES.length),
     bottomColor: Math.floor(r() * CLOTH_COLORS.length),
+    shoe: Math.floor(r() * SHOE_STYLES.length),
     shoeColor: Math.floor(r() * CLOTH_COLORS.length),
     accessory: Math.floor(r() * ACCESSORIES.length),
   };
@@ -383,15 +386,15 @@ export const SPRITE_URLS: Record<string, string> = {
 
 export const AVATAR_URLS: Record<string, Record<string, string>> = {
   man: {
-    idle: "/coke-music/art/avatar/idle-v2.png?v=8",
-    walk: "/coke-music/art/avatar/walk-v2.png?v=8",
-    sit: "/coke-music/art/avatar/sit-v2.png?v=8",
-    dance: "/coke-music/art/avatar/dance-v2.png?v=8",
+    idle: "/art/avatar/generated/base/man/idle.png?v=9",
+    walk: "/art/avatar/generated/base/man/walk.png?v=9",
+    sit: "/art/avatar/generated/base/man/sit.png?v=9",
+    dance: "/art/avatar/generated/base/man/dance.png?v=9",
   },
   woman: {
-    idle: "/coke-music/art/avatar/woman-idle-v2.png?v=8",
-    walk: "/coke-music/art/avatar/woman-walk-v2.png?v=8",
-    sit: "/coke-music/art/avatar/woman-sit-v2.png?v=8",
-    dance: "/coke-music/art/avatar/woman-dance-v2.png?v=8",
+    idle: "/art/avatar/generated/base/woman/idle.png?v=9",
+    walk: "/art/avatar/generated/base/woman/walk.png?v=9",
+    sit: "/art/avatar/generated/base/woman/sit.png?v=9",
+    dance: "/art/avatar/generated/base/woman/dance.png?v=9",
   },
 };

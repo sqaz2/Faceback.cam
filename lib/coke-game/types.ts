@@ -21,6 +21,8 @@ export interface Appearance {
   topColor: number;
   bottom: number;
   bottomColor: number;
+  /** Generated footwear silhouette. Optional keeps older local saves compatible. */
+  shoe?: number;
   shoeColor: number;
   accessory: number;
 }

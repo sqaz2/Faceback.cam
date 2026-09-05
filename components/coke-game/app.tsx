@@ -15,6 +15,7 @@ import {
   HAIR_STYLES,
   randomAppearance,
   ROOMS,
+  SHOE_STYLES,
   SKINS,
   TOP_STYLES,
 } from "@/lib/coke-game/data";
@@ -171,8 +172,15 @@ function CreateVego() {
             value={appearance.bottomColor}
             onPick={(i) => patch({ bottomColor: i })}
           />
+          <Row label="Shoes">
+            {SHOE_STYLES.map((shoe, i) => (
+              <Chip key={shoe} on={(appearance.shoe ?? 0) === i} onClick={() => patch({ shoe: i })}>
+                {shoe}
+              </Chip>
+            ))}
+          </Row>
           <Swatch
-            label="Shoes"
+            label="Shoe color"
             values={CLOTH_COLORS}
             value={appearance.shoeColor}
             onPick={(i) => patch({ shoeColor: i })}
@@ -456,7 +464,14 @@ function Wardrobe() {
           ))}
         </Row>
         <Swatch values={CLOTH_COLORS} value={appearance.bottomColor} onPick={(i) => patch({ bottomColor: i })} label="Bottom color" />
-        <Swatch values={CLOTH_COLORS} value={appearance.shoeColor} onPick={(i) => patch({ shoeColor: i })} label="Shoes" />
+        <Row label="Shoes">
+          {SHOE_STYLES.map((shoe, i) => (
+            <Chip key={shoe} on={(appearance.shoe ?? 0) === i} onClick={() => patch({ shoe: i })}>
+              {shoe}
+            </Chip>
+          ))}
+        </Row>
+        <Swatch values={CLOTH_COLORS} value={appearance.shoeColor} onPick={(i) => patch({ shoeColor: i })} label="Shoe color" />
         <Row label="Accessories">
           {ACCESSORIES.map((h, i) => (
             <Chip key={h} on={appearance.accessory === i} onClick={() => patch({ accessory: i })}>

@@ -28,11 +28,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isAppearance(value: unknown): value is Appearance {
   return isRecord(value)
     && APPEARANCE_FIELDS.every((field) => Number.isInteger(value[field]))
-    && (value.body === undefined || Number.isInteger(value.body));
+    && (value.body === undefined || Number.isInteger(value.body))
+    && (value.shoe === undefined || Number.isInteger(value.shoe));
 }
 
 function normalizeAppearance(value: Appearance): Appearance {
-  return { ...value, body: value.body === 1 ? 1 : 0 };
+  return {
+    ...value,
+    body: value.body === 1 ? 1 : 0,
+    shoe: Number.isInteger(value.shoe) && Number(value.shoe) >= 0 && Number(value.shoe) < 3 ? value.shoe : 0,
+  };
 }
 
 function isPlacedItem(value: unknown): value is PlacedItem {
