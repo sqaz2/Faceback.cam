@@ -64,7 +64,7 @@ export function VegaSan() {
     <div className="flex h-full flex-col gap-5 p-4 sm:p-6">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">V-Ego San</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Faceoff</p>
           <h2 className="mt-1 text-2xl font-semibold text-foam">Best of three</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setOverlay(null)}>

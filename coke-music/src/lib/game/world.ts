@@ -44,7 +44,7 @@ let onToast: ((t: string) => void) | null = null;
 let hasBurnedDisc: (() => boolean) | null = null;
 let doubleDb = false;
 let playerAppearance: Appearance = randomAppearance();
-let playerName = "V-Ego";
+let playerName = "Guest";
 
 export function bindWorld(handlers: {
   onDb: (n: number, why: string) => void;
@@ -552,7 +552,7 @@ export function startPerformance(): boolean {
     return false;
   }
   if (!hasBurnedDisc?.()) {
-    onToast?.("Burn a disc in Mix before performing.");
+    onToast?.("Publish a mix before performing.");
     return false;
   }
   const cat = CATALOG_MAP[stage.catalogId];

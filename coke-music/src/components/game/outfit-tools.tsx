@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useGame } from "@/lib/coke-game/store";
-import { randomAppearance, TOP_STYLES, BOTTOM_STYLES, CLOTH_COLORS, ACCESSORIES } from "@/lib/coke-game/data";
-import type { Appearance } from "@/lib/coke-game/types";
+import { useGame } from "@/lib/game/store";
+import { randomAppearance, TOP_STYLES, BOTTOM_STYLES, CLOTH_COLORS, ACCESSORIES } from "@/lib/game/data";
+import type { Appearance } from "@/lib/game/types";
 import { Button } from "./button";
 
 type Outfit = Pick<Appearance, "top" | "topColor" | "bottom" | "bottomColor" | "shoeColor" | "accessory">;

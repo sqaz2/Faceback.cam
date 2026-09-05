@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/game/button";
 import { sfxClick, sfxLose, sfxWin } from "@/lib/game/audio";
 import { useGame } from "@/lib/game/store";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,8 @@ export function VegaSan() {
   const play = (a: Hand) => {
     if (over) return;
     sfxClick();
+    // The opponent's choice is intentionally randomized when the player acts.
+    // eslint-disable-next-line react-hooks/purity
     const b = RPS[Math.floor(Math.random() * 3)]!;
     let r = "tie";
     let y = you;
@@ -62,7 +64,7 @@ export function VegaSan() {
     <div className="flex h-full flex-col gap-5 p-4 sm:p-6">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">V-Ego San</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Faceoff</p>
           <h2 className="mt-1 text-2xl font-semibold text-foam">Best of three</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setOverlay(null)}>
@@ -125,6 +127,8 @@ export function UncoverMusic() {
   const setOverlay = useGame((s) => s.setOverlay);
   const setToast = useGame((s) => s.setToast);
   const deck = useMemo(() => {
+    // A fresh board is intentionally shuffled once when this game mounts.
+    // eslint-disable-next-line react-hooks/purity
     const d = [...PAIRS, ...PAIRS].sort(() => Math.random() - 0.5);
     return d;
   }, []);

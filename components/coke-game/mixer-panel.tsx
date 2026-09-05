@@ -1,4 +1,4 @@
-import { Disc3, Play, Square, Flame } from "lucide-react";
+import { Radio, Play, Square, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/coke-game/button";
 import { CLIPS, GENRES, TRACKS } from "@/lib/coke-game/data";
@@ -34,8 +34,8 @@ export function MixerPanel() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Studio Mixer</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foam">Burn a disc</h2>
-          <p className="mt-1 text-sm text-muted">Pick a genre, stack clips, hit play. Empty decks still drop a house groove.</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foam">Publish a mix</h2>
+          <p className="mt-1 text-sm text-muted">Build with loops, preview it live, then publish it for rooms and stages.</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setOverlay(null)}>
           Close
@@ -129,18 +129,18 @@ export function MixerPanel() {
                 createdAt: Date.now(),
               });
               sfxWin();
-              setToast(replaced ? "Disc burned. Your oldest disc was replaced." : "Disc burned. Play it on a stage or jukebox.");
+              setToast(replaced ? "Mix published. Your oldest mix was replaced." : "Mix published. Play it in a room or on a stage.");
             }}
           >
-            <Flame className="size-4" />
-            Burn disc
+            <Sparkles className="size-4" />
+            Publish mix
           </Button>
         </div>
       </div>
 
       {discs.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">Your discs</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">Your published mixes</p>
           <ul className="flex flex-col gap-2">
             {discs.map((d) => (
               <li key={d.id}>
@@ -157,7 +157,7 @@ export function MixerPanel() {
                     refresh();
                   }}
                 >
-                  <Disc3 className="size-4 text-coke" />
+                  <Radio className="size-4 text-coke" />
                   <span className="flex-1 text-sm font-medium text-foam">{d.name}</span>
                   <span className="text-xs uppercase tracking-wider text-muted">{d.genre}</span>
                 </button>

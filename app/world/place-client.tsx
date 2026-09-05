@@ -7,7 +7,7 @@ export function CokeMusicPlace() {
   return <main className={`coke-place-shell coke-screen-${screen}`}>
     <header className="coke-place-bar">
       <Link href="/" className="coke-place-brand">FACEBACK<span>.CAM</span></Link>
-      <span>Coke Music</span>
+      <span>World</span>
     </header>
     <div className="coke-place-game"><CokeMusicApp /></div>
   </main>;

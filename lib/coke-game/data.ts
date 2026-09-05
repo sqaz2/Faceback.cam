@@ -17,7 +17,7 @@ export const CLOTH_COLORS = [
 export const HAIR_STYLES = ["Crop", "Spikes", "Flow", "Halo", "Tail", "Bangs"];
 export const TOP_STYLES = ["Tee", "Tank", "Hoodie", "Jacket"];
 export const BOTTOM_STYLES = ["Pants", "Shorts", "Skirt"];
-export const ACCESSORIES = ["None", "Shades", "Cans", "Cap"];
+export const ACCESSORIES = ["None", "Shades", "Headphones", "Cap"];
 
 export const DEFAULT_APPEARANCE: Appearance = {
   skin: 0,
@@ -28,7 +28,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   bottom: 0,
   bottomColor: 2,
   shoeColor: 2,
-  accessory: 2,
+  accessory: 0,
 };
 
 export const CATALOG: CatalogItem[] = [
@@ -41,7 +41,7 @@ export const CATALOG: CatalogItem[] = [
   { id: "bean", name: "Bean Bag", price: 30, w: 1, d: 1, sit: true, seats: 1, sitY: 0.22, sitLift: -2, sprite: "bean", desc: "Low, slouchy, forever." },
   { id: "fridge", name: "Mini Fridge", price: 70, w: 1, d: 1, drink: true, sprite: "fridge", desc: "Always stocked. Somehow." },
   { id: "vending", name: "Cola Machine", price: 120, w: 1, d: 1, drink: true, sprite: "vending", desc: "Ice-cold. Earns decibels." },
-  { id: "jukebox", name: "Jukebox", price: 150, w: 1, d: 1, music: true, sprite: "jukebox", desc: "Drop a burned disc here." },
+  { id: "jukebox", name: "Room Player", price: 150, w: 1, d: 1, music: true, sprite: "jukebox", desc: "Send a published mix to the room." },
   { id: "disco", name: "Disco Ball", price: 80, w: 1, d: 1, hang: true, block: false, sprite: "disco", desc: "Every room needs one." },
   { id: "crate", name: "Bottle Crate", price: 18, w: 1, d: 1, drink: true, sprite: "crate", desc: "Grab a classic." },
   { id: "stage", name: "Stage Block", price: 160, w: 2, d: 2, stage: true, block: false, sprite: "stage", desc: "Perform your mix." },
@@ -241,7 +241,7 @@ export const ROOMS: RoomDef[] = [
     id: "studio",
     name: "My Studio",
     city: "Private",
-    blurb: "Your space. Place furniture. Burn discs. Invite no one — or everyone.",
+    blurb: "Your space. Place furniture. Publish mixes. Invite no one — or everyone.",
     w: 10,
     h: 10,
     floor: "tile",
@@ -280,7 +280,7 @@ export const CHAT_LINES = [
   "need more decibels",
   "new sofa in the catalog",
   "Red Room hits different",
-  "who burned that disc",
+  "who published that mix",
   "dance floor is open",
   "grab a cola first",
   "stage is free — go",
@@ -292,7 +292,7 @@ export const CHAT_LINES = [
 export const REPLIES = [
   "facts",
   "on my way",
-  "burn one and drop it",
+  "publish one and queue it",
   "see you there",
   "already dancing",
   "same",
@@ -379,12 +379,8 @@ export const SPRITE_URLS: Record<string, string> = {
 };
 
 export const AVATAR_URLS: Record<string, string> = {
-  idle: "/coke-music/art/avatar/idle.png?v=6",
-  walk: "/coke-music/art/avatar/walk.png?v=6",
-  sit: "/coke-music/art/avatar/sit.png?v=6",
-  dance: "/coke-music/art/avatar/dance.png?v=6",
-  hair: "/coke-music/art/avatar/hair.png?v=6",
-  tops: "/coke-music/art/avatar/tops.png?v=6",
-  bottoms: "/coke-music/art/avatar/bottoms.png?v=6",
-  acc: "/coke-music/art/avatar/acc.png?v=6",
+  idle: "/coke-music/art/avatar/idle-v2.png?v=7",
+  walk: "/coke-music/art/avatar/walk-v2.png?v=7",
+  sit: "/coke-music/art/avatar/sit-v2.png?v=7",
+  dance: "/coke-music/art/avatar/dance-v2.png?v=7",
 };

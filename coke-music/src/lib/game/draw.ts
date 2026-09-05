@@ -6,7 +6,7 @@ import {
   HAIR_COLORS,
   SKINS,
 } from "./data";
-import type { Actor, Appearance, PlacedItem, RoomDef } from "./types";
+import type { Actor, Appearance, PlacedItem, RoomDef, Dir } from "./types";
 import { TILE_H, TILE_W, seatLiftPx, tileToScreen, world } from "./world";
 
 export type SpriteMap = Record<string, HTMLImageElement>;
@@ -25,10 +25,6 @@ type AvatarSheets = {
   walk: HTMLImageElement;
   sit: HTMLImageElement;
   dance: HTMLImageElement;
-  hair: HTMLImageElement;
-  tops: HTMLImageElement;
-  bottoms: HTMLImageElement;
-  acc: HTMLImageElement;
 };
 
 let avatarSheets: AvatarSheets | null = null;
@@ -412,29 +408,16 @@ function drawHair(ctx: CanvasRenderingContext2D, style: number, color: string, d
 function drawWardrobeHair(ctx: CanvasRenderingContext2D, a: Appearance, dir: number, action: Actor["action"]) {
   const sitting = action === "sit";
   const hx = 48;
-  const hy = sitting ? 30 : 24;
-  const r = sitting ? 18 : 20;
+  const hy = sitting ? 17 : 14;
+  const r = sitting ? 8 : 9;
   const hairC = HAIR_COLORS[a.hairColor] ?? HAIR_COLORS[0]!;
-  const sh = ensureAvatarSheets();
   ctx.save();
   if (facingLeft(dir)) {
     ctx.translate(hx, 0);
     ctx.scale(-1, 1);
     ctx.translate(-hx, 0);
   }
-  if (sheetReady(sh.hair) && a.hair >= 0 && a.hair <= 5) {
-    const cw = sh.hair.naturalWidth / 3;
-    const ch = sh.hair.naturalHeight / 2;
-    const col = a.hair % 3;
-    const row = Math.floor(a.hair / 3);
-    const hair = extractCellCenter(sh.hair, col * cw, row * ch, cw, ch, 72);
-    tintToColor(hair, hairC);
-    const dw = sitting ? 54 : 52;
-    const dh = sitting ? 40 : 38;
-    ctx.drawImage(hair, hx - dw / 2, hy - dh * 0.82, dw, dh);
-  } else {
-    drawHair(ctx, a.hair, hairC, 0, hx, hy, r);
-  }
+  drawHair(ctx, a.hair, hairC, 0, hx, hy, r);
   ctx.restore();
 }
 
@@ -446,7 +429,6 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
   const topC = CLOTH_COLORS[a.topColor] ?? CLOTH_COLORS[0]!;
   const botC = CLOTH_COLORS[a.bottomColor] ?? CLOTH_COLORS[2]!;
   const skinC = SKINS[a.skin] ?? SKINS[0]!;
-  const sh = ensureAvatarSheets();
   ctx.save();
   if (facingLeft(dir)) {
     ctx.translate(hx, 0);
@@ -497,33 +479,27 @@ function drawWardrobeFront(ctx: CanvasRenderingContext2D, a: Appearance, dir: nu
   }
 
   const acc = ACCESSORIES[a.accessory];
-  if (acc === "Shades" && sheetReady(sh.acc)) {
-    const cw = sh.acc.naturalWidth / 2;
-    const ch = sh.acc.naturalHeight / 2;
-    tintDraw(ctx, sh.acc, 0, 0, cw, ch, hx - 16, hy - 4, 32, 14, null);
-  } else if (acc === "Cans" && sheetReady(sh.acc)) {
-    const cw = sh.acc.naturalWidth / 2;
-    const ch = sh.acc.naturalHeight / 2;
-    tintDraw(ctx, sh.acc, cw, 0, cw, ch, hx - 28, hy - 12, 56, 30, null);
-  } else if (acc === "Shades") {
+  const headY = sitting ? 17 : 14;
+  const headR = sitting ? 8 : 9;
+  if (acc === "Shades") {
     ctx.fillStyle = "#1a1012";
-    ctx.fillRect(hx - 13, hy - 1, 26, 6);
-  } else if (acc === "Cans") {
-    oval(ctx, hx - (r + 3), hy + 1, 5, 7, "#1a1012");
-    oval(ctx, hx + (r + 3), hy + 1, 5, 7, "#1a1012");
+    ctx.fillRect(hx - 7, headY - 1, 14, 3);
+  } else if (acc === "Headphones") {
+    oval(ctx, hx - (headR + 1), headY + 1, 2.5, 4, "#1a1012");
+    oval(ctx, hx + (headR + 1), headY + 1, 2.5, 4, "#1a1012");
     ctx.strokeStyle = "#1a1012";
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(hx, hy - 2, r + 2, Math.PI, 0);
+    ctx.arc(hx, headY - 1, headR + 1, Math.PI, 0);
     ctx.stroke();
   } else if (acc === "Cap") {
-    oval(ctx, hx, hy - r * 0.78, r * 1.02, r * 0.38, "#e61a27");
+    oval(ctx, hx, headY - headR * 0.72, headR * 1.02, headR * 0.38, "#e61a27");
     ctx.fillStyle = "#c4121e";
     ctx.beginPath();
-    ctx.ellipse(hx + r * 0.42, hy - r * 0.5, r * 0.72, r * 0.16, 0.15, 0, Math.PI * 2);
+    ctx.ellipse(hx + headR * 0.42, headY - headR * 0.5, headR * 0.72, headR * 0.16, 0.15, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = shade("#e61a27", -30);
-    ctx.fillRect(hx - r * 0.7, hy - r * 0.72, r * 1.4, 3);
+    ctx.fillRect(hx - headR * 0.7, headY - headR * 0.72, headR * 1.4, 2);
   }
   ctx.restore();
 }
@@ -538,16 +514,14 @@ function composeAvatar(
     action === "sit" ? sh.sit : action === "walk" ? sh.walk : action === "dance" || action === "wave" ? sh.dance : sh.idle;
   if (!bodyImg.complete || bodyImg.naturalWidth < 8) return null;
   const key = `${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoeColor}-${a.accessory}-${action}-${dir}`;
-  const wardrobeReady = sheetReady(sh.hair)
-    && (a.accessory === 0 || a.accessory === 3 || sheetReady(sh.acc));
+  const wardrobeReady = true;
   const hit = frameCache.get(key);
   if (hit && wardrobeReady) return hit;
 
-  const cell = dirCell2(dir);
-  const sw = bodyImg.naturalWidth / 2;
-  const shh = bodyImg.naturalHeight / 2;
-  const sx = cell.c * sw;
-  const sy = cell.r * shh;
+  const sw = bodyImg.naturalWidth / 4;
+  const shh = bodyImg.naturalHeight;
+  const sx = Math.max(0, Math.min(3, dir)) * sw;
+  const sy = 0;
 
   let body: HTMLCanvasElement;
   try {
@@ -1215,6 +1189,7 @@ export function renderAvatarPreview(
   appearance: Appearance,
   t: number,
   action: Actor["action"] = "idle",
+  direction?: Dir,
 ) {
   ensureAvatarSheets();
   const ctx = canvas.getContext("2d");
@@ -1230,7 +1205,7 @@ export function renderAvatarPreview(
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = "#1f1013";
   ctx.fillRect(0, 0, w, h);
-  const dir = (Math.floor(t / 1.8) % 4) as 0 | 1 | 2 | 3;
+  const dir = direction ?? (Math.floor(t / 1.8) % 4) as 0 | 1 | 2 | 3;
   ctx.save();
   ctx.translate(w / 2, h * 0.72);
   ctx.scale(2.8, 2.8);

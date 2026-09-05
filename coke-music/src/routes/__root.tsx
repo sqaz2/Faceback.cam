@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Coke Music";
+const APP_NAME = "FACEBACK.CAM";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#14080A" },
       {
         name: "description",
-        content: "Mix a track, burn a disc, hang in the Red Room — a Coke Music tribute.",
+        content: "Make a sound, publish a mix, and meet creators in live rooms.",
       },
     ],
     links: [

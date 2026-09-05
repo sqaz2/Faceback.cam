@@ -64,3 +64,11 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.coke-creator-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  background: var(--color-ink);
+}

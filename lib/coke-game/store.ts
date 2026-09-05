@@ -7,6 +7,7 @@ import { startLounge, unlockAudio } from "./audio";
 const KEY = "coke-music-v1";
 const BACKUP_KEY = "coke-music-v1-backup";
 const VERSION = 1;
+const ACCESSORY_DEFAULT_KEY = "coke-music-accessory-default-v2";
 
 const APPEARANCE_FIELDS: (keyof Appearance)[] = [
   "skin",
@@ -184,11 +185,20 @@ export const useGame = create<GameState>((set, get) => ({
       hasBurnedDisc: () => get().discs.length > 0,
     });
     if (s) {
+      let appearance = s.appearance;
+      try {
+        if (appearance.accessory === 2 && !localStorage.getItem(ACCESSORY_DEFAULT_KEY)) {
+          appearance = { ...appearance, accessory: 0 };
+          localStorage.setItem(ACCESSORY_DEFAULT_KEY, "done");
+        }
+      } catch {
+        /* the game remains usable when storage is unavailable */
+      }
       set({
         hydrated: true,
         hasSave: true,
         name: s.name,
-        appearance: s.appearance,
+        appearance,
         db: s.db,
         inventory: s.inventory,
         discs: s.discs,
@@ -196,7 +206,7 @@ export const useGame = create<GameState>((set, get) => ({
         lastRoom: s.lastRoom,
         seenHelp: s.seenHelp,
       });
-      setPlayerLook(s.appearance, s.name);
+      setPlayerLook(appearance, s.name);
     } else {
       set({ hydrated: true, hasSave: false });
     }
@@ -340,7 +350,7 @@ export const useGame = create<GameState>((set, get) => ({
   enter: (roomId) => {
     const s = get();
     const id = roomId ?? s.lastRoom ?? "red-room";
-    setPlayerLook(s.appearance, s.name || "V-Ego");
+    setPlayerLook(s.appearance, s.name || "Guest");
     enterRoom(id, id === "studio" ? s.studio : undefined);
     unlockAudio();
     startLounge();

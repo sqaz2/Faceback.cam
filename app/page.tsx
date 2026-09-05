@@ -11,7 +11,7 @@ export default function Home() {
           FACEBACK<span>.CAM</span>
         </Link>
         <nav className="desktop-nav" aria-label="Main navigation">
-          <Link href="/coke-music">Coke Music</Link>
+          <Link href="/world">World</Link>
           <Link href="/arena">Arena</Link>
           <Link href="/watch">Watch</Link>
           <a href="#work">Work</a>
@@ -38,8 +38,8 @@ export default function Home() {
             work gets judged before the creator gets revealed.
           </p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="/coke-music">
-              Enter Coke Music <ArrowRight size={18} />
+            <Link className="button button-primary" href="/world">
+              Enter the world <ArrowRight size={18} />
             </Link>
             <Link className="button button-primary" href="/arena">
               Create or join a live room <ArrowRight size={18} />

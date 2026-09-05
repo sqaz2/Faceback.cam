@@ -12,7 +12,7 @@ import {
   Hand,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/game/button";
 import { SPRITE_URLS } from "@/lib/game/data";
 import { renderWorld, type SpriteMap } from "@/lib/game/draw";
 import { setMuted as setAudioMuted, sfxClick, unlockAudio } from "@/lib/game/audio";
@@ -146,7 +146,7 @@ export function WorldView() {
         className="absolute inset-0 size-full touch-none"
         tabIndex={0}
         role="application"
-        aria-label="Coke Music room. Use arrow keys or W A S D to walk; use the controls below to interact."
+        aria-label="FACEBACK.CAM room. Use arrow keys or W A S D to walk; use the controls below to interact."
         onKeyDown={(event) => {
           const key = event.key.toLowerCase();
           const direction = key === "arrowup" || key === "w" ? [0, -1]
@@ -217,7 +217,7 @@ export function WorldView() {
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4">
         <div className="pointer-events-auto rounded-[16px] border border-border bg-ink/80 px-3 py-2 backdrop-blur-sm">
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted">{roomName}</p>
-          <p className="text-sm font-medium text-foam">{name || "V-Ego"}</p>
+          <p className="text-sm font-medium text-foam">{name || "Guest"}</p>
         </div>
         <div className="pointer-events-auto flex items-center gap-2 rounded-[16px] border border-border bg-ink/80 px-3 py-2 backdrop-blur-sm">
           <span className="text-[11px] uppercase tracking-[0.14em] text-muted">dB</span>

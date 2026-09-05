@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Dices, MapPin } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/game/button";
 import { MixerPanel } from "@/components/game/mixer-panel";
 import { UncoverMusic, VegaSan } from "@/components/game/minigames";
 import { Wordmark } from "@/components/game/wordmark";
@@ -17,12 +17,13 @@ import {
   SKINS,
   TOP_STYLES,
 } from "@/lib/game/data";
-import { renderAvatarPreview } from "@/lib/game/draw";
+import { AvatarPreview } from "./avatar-preview";
 import { sfxClick, sfxCoin, unlockAudio } from "@/lib/game/audio";
 import { useGame } from "@/lib/game/store";
 import { world } from "@/lib/game/world";
 import { cn } from "@/lib/utils";
 import type { Appearance } from "@/lib/game/types";
+import { OutfitTools } from "./outfit-tools";
 
 export function CokeMusicApp() {
   const hydrate = useGame((s) => s.hydrate);
@@ -56,16 +57,16 @@ function Splash() {
   return (
     <div className="relative flex min-h-dvh flex-col overflow-hidden">
       <img
-        src="/art/splash.jpg?v=3"
+        src="/coke-music/art/splash.jpg?v=3"
         alt=""
         className="absolute inset-0 size-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/55 to-ink/20" />
       <div className="relative z-10 flex flex-1 flex-col justify-end px-5 pb-10 pt-16 sm:px-10 sm:pb-14">
-        <p className="text-xs font-medium uppercase tracking-[0.22em] text-cream/80">Est. 2002 · Studios open</p>
+        <p className="text-xs font-medium uppercase tracking-[0.22em] text-cream/80">AI AGE · ROOMS OPEN</p>
         <Wordmark light className="mt-3 text-5xl sm:text-7xl" />
         <p className="mt-3 max-w-md text-base text-cream/85">
-          Mix a track. Burn a disc. Hang in the Red Room. A tribute to the isometric cola lounge.
+          Make a sound. Publish a mix. Join the room where creators and their work meet live.
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
           {hasSave && (
@@ -76,7 +77,7 @@ function Splash() {
                 enter();
               }}
             >
-              Continue as {name || "V-Ego"}
+              Continue as {name || "Guest"}
             </Button>
           )}
           <Button
@@ -85,13 +86,13 @@ function Splash() {
             onClick={() => {
               unlockAudio();
               if (hasSave) {
-                if (window.confirm("Start a new V-Ego? Your current local save will be deleted.")) reset();
+                if (window.confirm("Start a new character? Your current local save will be deleted.")) reset();
               } else {
                 setScreen("create");
               }
             }}
           >
-            {hasSave ? "New V-Ego" : "Enter the studios"}
+            {hasSave ? "New character" : "Enter FACEBACK.CAM"}
           </Button>
         </div>
       </div>
@@ -100,38 +101,23 @@ function Splash() {
 }
 
 function CreateVego() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const name = useGame((s) => s.name);
   const setName = useGame((s) => s.setName);
   const appearance = useGame((s) => s.appearance);
   const setAppearance = useGame((s) => s.setAppearance);
   const enter = useGame((s) => s.enter);
 
-  useEffect(() => {
-    let raf = 0;
-    const t0 = performance.now();
-    const loop = (now: number) => {
-      const t = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (now - t0) / 1000;
-      if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "idle");
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [appearance]);
 
   const patch = (p: Partial<Appearance>) => setAppearance({ ...appearance, ...p });
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-8">
       <div>
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Create your V-Ego</p>
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Create your character</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foam">First impressions</h1>
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]">
-        <canvas
-          ref={canvasRef}
-          className="h-72 w-full rounded-[24px] border border-border bg-ink-soft sm:h-80"
-        />
+        <AvatarPreview appearance={appearance} />
         <div className="flex flex-col gap-4">
           <label className="block">
             <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Name</span>
@@ -190,7 +176,8 @@ function CreateVego() {
               </Chip>
             ))}
           </Row>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <OutfitTools />
+          <div className="coke-creator-actions mt-2 flex flex-wrap gap-2">
             <Button
               variant="ink"
               onClick={() => {
@@ -205,11 +192,11 @@ function CreateVego() {
               size="lg"
               onClick={() => {
                 unlockAudio();
-                if (!name.trim()) setName("V-Ego");
+                if (!name.trim()) setName("Guest");
                 enter("red-room");
               }}
             >
-              Walk in
+              Enter room
             </Button>
           </div>
         </div>
@@ -264,7 +251,7 @@ function Overlays() {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Coke Music menu"
+        aria-label="FACEBACK.CAM room menu"
         className="relative z-10 flex max-h-[88dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-[24px] border border-border bg-ink-soft shadow-2xl sm:rounded-[24px]"
       >
         {overlay === "nav" && <Navigator />}
@@ -325,7 +312,7 @@ function Navigator() {
       </ul>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button variant="ink" onClick={() => setOverlay("vega")}>
-          V-Ego San
+          Faceoff
         </Button>
         <Button variant="ink" onClick={() => setOverlay("uncover")}>
           Uncover
@@ -410,19 +397,6 @@ function Wardrobe() {
   const setAppearance = useGame((s) => s.setAppearance);
   const setOverlay = useGame((s) => s.setOverlay);
   const persist = useGame((s) => s.persist);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    let raf = 0;
-    const t0 = performance.now();
-    const loop = (now: number) => {
-      const t = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (now - t0) / 1000;
-      if (canvasRef.current) renderAvatarPreview(canvasRef.current, appearance, t, "dance");
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [appearance]);
 
   const patch = (p: Partial<Appearance>) => {
     setAppearance({ ...appearance, ...p });
@@ -440,7 +414,7 @@ function Wardrobe() {
           Close
         </Button>
       </div>
-      <canvas ref={canvasRef} className="mt-3 h-48 w-full rounded-[20px] border border-border bg-ink" />
+      <AvatarPreview appearance={appearance} />
       <div className="mt-4 flex flex-col gap-3">
         <Swatch values={SKINS} value={appearance.skin} onPick={(i) => patch({ skin: i })} label="Skin" />
         <Row label="Hair">
@@ -475,6 +449,7 @@ function Wardrobe() {
             </Chip>
           ))}
         </Row>
+        <OutfitTools />
       </div>
     </div>
   );
@@ -492,7 +467,7 @@ function Help() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "coke-music-save.json";
+    link.download = "faceback-cam-save.json";
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -511,10 +486,10 @@ function Help() {
         <li>Tap the floor to walk. Tap a sofa or chair (or the tiles next to it) to sit on the cushion — two-seaters have room for someone next to you. Furniture blocks its tiles; you cannot walk through a sofa or plant.</li>
         <li>Drinking cola, finishing a set, and winning minigames earns <b className="text-foam">decibels</b>.</li>
         <li>
-          Open <b className="text-foam">Mix</b> to stack drum, bass, melody, and vox clips. Burn a disc, walk to a stage, then start your set.
+          Open <b className="text-foam">Mix</b> to stack drum, bass, melody, and voice clips. Publish the mix, walk to a stage, then start your set.
         </li>
         <li>The Red Room pays double. My Studio is yours — buy furniture, then place it.</li>
-        <li>V-Ego San and Uncover the Music live in the navigator. In your studio, tap <b className="text-foam">Pack</b>, then tap furniture to return it to inventory.</li>
+        <li>Faceoff and Uncover the Music live in the navigator. In your studio, tap <b className="text-foam">Pack</b>, then tap furniture to return it to inventory.</li>
       </ul>
       <div className="mt-5 grid grid-cols-2 gap-2">
         <Button variant="ink" onClick={downloadSave}>Back up progress</Button>
@@ -524,7 +499,7 @@ function Help() {
           type="file"
           accept="application/json,.json"
           className="sr-only"
-          aria-label="Restore Coke Music backup"
+          aria-label="Restore FACEBACK.CAM backup"
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -532,7 +507,7 @@ function Help() {
             void file.text().then((raw) => {
               const result = importSave(raw);
               if (result === "ok") setToast("Progress restored.");
-              else if (result === "invalid") setToast("That backup is not a valid Coke Music save.");
+              else if (result === "invalid") setToast("That backup is not a valid FACEBACK.CAM save.");
             }).catch(() => setToast("That backup could not be read."));
           }}
         />
