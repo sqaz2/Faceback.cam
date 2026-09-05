@@ -166,6 +166,7 @@ function slotFromTile(f: PlacedItem, tx: number): number {
 }
 
 function sitFacing(_f: PlacedItem): Actor["dir"] {
+  void _f;
   // Face out from the seat toward the room (camera / +y).
   return 1;
 }
@@ -551,7 +552,7 @@ export function selectedFurniture(): PlacedItem | undefined {
 }
 
 /** Walk to selected furniture and perform sit/drink/music/stage on arrival. */
-export function useSelectedFurniture(): boolean {
+export function activateSelectedFurniture(): boolean {
   const p = player();
   const f = selectedFurniture();
   if (!p || !f) return false;
