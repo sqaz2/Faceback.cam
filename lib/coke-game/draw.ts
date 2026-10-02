@@ -70,7 +70,7 @@ function loadActionSheets(category: "top" | "bottom" | "shoes" | "hair" | "acces
     const img = new Image();
     img.decoding = "async";
     img.addEventListener("load", () => frameCache.clear());
-    img.src = `/coke-music/art/avatar/generated/${category}/${body}/${assetSlug(style)}/${action}.png?v=11`;
+    img.src = `/coke-music/art/avatar/generated/${category}/${body}/${assetSlug(style)}/${action}.png?v=12`;
     set[action] = img;
   }
   return set;
@@ -599,6 +599,49 @@ function drawSpriteItem(ctx: CanvasRenderingContext2D, item: PlacedItem, img: HT
   ctx.drawImage(img, s.x - destW / 2, footY - destH - hangLift, destW, destH);
 }
 
+
+/** Redraw the lower apron of seating furniture so sit feet nestle on cushions
+ *  instead of poking through the gap under the seat lip. */
+function drawSeatApron(ctx: CanvasRenderingContext2D, item: PlacedItem, img: HTMLImageElement) {
+  const cat = CATALOG_MAP[item.catalogId]!;
+  if (!cat.sit) return;
+  const { w, d } = effectiveFootprint(cat, item.rot ?? 0);
+  const s = tileToScreen(item.x + (w - 1) * 0.5, item.y + (d - 1) * 0.5);
+  const footY = s.y + TILE_H * 0.5;
+  const destH = SPRITE_H[cat.sprite ?? item.catalogId] ?? 56;
+  const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+  const tileSpan = TILE_W * (0.55 * cat.w + 0.45 * cat.d);
+  let destW = destH * aspect;
+  if (cat.w >= 2) destW = Math.min(Math.max(destW, tileSpan * 0.92), tileSpan * 1.08);
+  else if (aspect < 0.55) destW = Math.min(destW, tileSpan * 1.15);
+  else destW = Math.min(Math.max(destW, tileSpan * 0.7), tileSpan * 1.15);
+  const dx = s.x - destW / 2;
+  const dy = footY - destH;
+  // Opaque front skirt under the cushion lip (covers open between-leg gap so sit feet
+  // cannot peek under). Habbo-like nestle keeps upper legs visible above this skirt.
+  const skirtTop = dy + destH * 0.62;
+  const skirtBot = dy + destH * 0.92;
+  ctx.fillStyle = "#7a0810";
+  ctx.beginPath();
+  ctx.moveTo(dx + destW * 0.14, skirtTop);
+  ctx.lineTo(dx + destW * 0.86, skirtTop);
+  ctx.lineTo(dx + destW * 0.78, skirtBot);
+  ctx.lineTo(dx + destW * 0.22, skirtBot);
+  ctx.closePath();
+  ctx.fill();
+  // Slight lighter lip along the top edge of the skirt
+  ctx.fillStyle = "#9a121c";
+  ctx.fillRect(dx + destW * 0.14, skirtTop, destW * 0.72, Math.max(2, destH * 0.04));
+  const frac = 0.42;
+  const srcH = img.naturalHeight;
+  const srcW = img.naturalWidth;
+  const sy = Math.floor(srcH * (1 - frac));
+  const sh = srcH - sy;
+  const dy2 = dy + destH * (1 - frac);
+  const dh = destH * frac;
+  ctx.drawImage(img, 0, sy, srcW, sh, dx, dy2, destW, dh);
+}
+
 export function drawAppearance(
   ctx: CanvasRenderingContext2D,
   a: Appearance,
@@ -619,13 +662,21 @@ export function drawAppearance(
       const stretch = walk ? 1 + Math.sin(phase * 2) * 0.03 : 1;
       const breathe = action === "idle" ? 1 + Math.sin(t * 2.2) * 0.012 : 1;
       const sitting = action === "sit";
-      const h = sitting ? 72 : 78;
+      const h = sitting ? 62 : 78;
       const w = (frame.width / frame.height) * h;
-      const foot = sitting ? 2 : 10;
+      // Sitting: smaller foot push + clip toes so they nestle on the cushion
+      // instead of peeking under the sofa lip (Habbo-like hang is OK; under-peek is not).
+      const foot = sitting ? 0 : 10;
       ctx.save();
       ctx.translate(ox, oy + foot - sitLift - bob);
       ctx.rotate(sway);
       ctx.scale(stretch, breathe / stretch);
+      if (sitting) {
+        const hide = Math.round(h * 0.32);
+        ctx.beginPath();
+        ctx.rect(-w / 2, -h, w, h - hide);
+        ctx.clip();
+      }
       ctx.drawImage(frame, -w / 2, -h, w, h);
       ctx.restore();
       return;
@@ -754,6 +805,15 @@ export function renderWorld(
         drawBubble(ctx, s.x, s.y - lift - (a.action === "sit" ? 48 : 58), a.bubble.text);
       }
     }
+  }
+
+  // Cover sit-feet that would otherwise poke under the seat lip.
+  for (const f of world.furniture) {
+    const cat = CATALOG_MAP[f.catalogId];
+    if (!cat?.sit) continue;
+    if (!world.actors.some((a) => a.sitId === f.id && a.action === "sit")) continue;
+    const spr = cat.sprite ? pickFurnitureImage(sprites, cat.sprite, f.rot ?? 0, cat.rotate) : undefined;
+    if (spr) drawSeatApron(ctx, f, spr);
   }
 
   for (const p of world.particles) {

@@ -51,3 +51,9 @@ This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Kee
 - Cap / Shades / Headphones overlays re-extracted from red master sheets (`scripts/reextract-accessory-overlays.py`) with head-band connected-component filters (no body leak / blob).
 - Walk stride duty cycle slightly favors planted idle (`sin(phase) > 0.2`).
 - Wardrobe cache-bust `?v=11`.
+
+## Sit / shades polish (2026-10-02)
+
+- Sofa/chair `sitLift` + sit foot clip so feet nestle on cushions (no under-sofa peek).
+- Shades re-extract: thicken eye-band + lens/gloss remap so they read as glasses.
+- Woman headphones sit nudged down slightly. Wardrobe cache-bust `?v=12`.

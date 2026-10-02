@@ -53,10 +53,10 @@ export const CATALOG_SECTIONS: CatalogSection[] = [
 ];
 
 export const CATALOG: CatalogItem[] = [
-  { id: "sofa", name: "Velvet Sofa", price: 90, w: 2, d: 1, section: "seating", rotate: "90", sit: true, seats: 2, sitY: 0.1, sitLift: 20, sitSpread: 0.95, sprite: "sofa", desc: "Two-seat red velvet — sit next to someone." },
-  { id: "chair", name: "Lounge Chair", price: 40, w: 1, d: 1, section: "seating", rotate: "90", sit: true, seats: 1, sitY: 0.08, sitLift: 16, sprite: "chair", desc: "A single plush seat." },
+  { id: "sofa", name: "Velvet Sofa", price: 90, w: 2, d: 1, section: "seating", rotate: "90", sit: true, seats: 2, sitY: 0.14, sitLift: 18, sitSpread: 0.92, sprite: "sofa", desc: "Two-seat red velvet — sit next to someone." },
+  { id: "chair", name: "Lounge Chair", price: 40, w: 1, d: 1, section: "seating", rotate: "90", sit: true, seats: 1, sitY: 0.12, sitLift: 15, sprite: "chair", desc: "A single plush seat." },
   { id: "booth", name: "Diner Booth", price: 100, w: 2, d: 1, section: "seating", rotate: "90", sit: true, seats: 2, sitY: 0.1, sitLift: 8, sitSpread: 0.9, sprite: "booth", desc: "Corner booth — room for two." },
-  { id: "stool", name: "Bar Stool", price: 20, w: 1, d: 1, section: "seating", rotate: "360", sit: true, seats: 1, sitY: 0.1, sitLift: 14, sprite: "stool", desc: "Perch and people-watch." },
+  { id: "stool", name: "Bar Stool", price: 20, w: 1, d: 1, section: "seating", rotate: "360", sit: true, seats: 1, sitY: 0.12, sitLift: 14, sprite: "stool", desc: "Perch and people-watch." },
   { id: "bean", name: "Bean Bag", price: 30, w: 1, d: 1, section: "seating", rotate: "360", sit: true, seats: 1, sitY: 0.22, sitLift: -2, sprite: "bean", desc: "Low, slouchy, forever." },
   { id: "table", name: "Cafe Table", price: 35, w: 1, d: 1, section: "tables", rotate: "360", sprite: "table", desc: "Round cream tabletop." },
   { id: "lamp", name: "Floor Lamp", price: 28, w: 1, d: 1, section: "lighting", rotate: "360", sprite: "lamp", desc: "Warm pool of light." },
