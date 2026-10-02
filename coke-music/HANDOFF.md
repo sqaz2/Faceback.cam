@@ -265,7 +265,7 @@ Improving the mixer is still aligned with the user. Don’t strip it.
 
 These are **not** claimed done:
 
-- Walk uses a 2-pose stride (idle ↔ mid-stride walk sheets) plus bob/sway — not a full 4-frame cycle.
+- Walk art is still 2 poses (idle planted ↔ walk mid-stride; 4-dir×1 sheets). Code drives a 4-beat plant/push/mid/recover cycle via walkPhase + lean/bob/squash/plant-shadow — no invented frames.
 - Headphones/shades re-extracted from red masters (`scripts/reextract-accessory-overlays.py`) with head-band CC filters; sit cleaner than legacy `acc.png` blobs. Cap uses the same pipeline.
 - Tail/Bangs re-extracted from cyan masters with Crop scalp underlay; still short of salon-perfect strand detail.
 - Sitters are on cushions in QA shots; small `sitLift` / `sitY` tweaks may still help nest them deeper if sofa art changes.

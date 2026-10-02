@@ -44,7 +44,7 @@ This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Kee
 ## Hair / walk polish (2026-10-02)
 
 - Tail/Bangs overlays re-extracted from cyan master sheets (`scripts/reextract-hair-overlays.py`) with Crop scalp underlay in compose.
-- Walk uses a 2-pose stride (idle ↔ walk sheets) + stronger bob/sway — not a full multi-frame cycle.
+- Walk art is still 2 poses (idle ↔ walk sheets). A 4-beat plant/push/mid/recover cycle is sold with timing/lean/bob/plant-shadow — not new sheet frames.
 
 ## Accessory polish (2026-10-02)
 
@@ -62,3 +62,9 @@ This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Kee
 
 - Booth + bean (+ stool) sitLift/sitY retuned to match sofa/chair nestle; seat apron is per-furniture (booth burgundy, bean oval).
 - Mixer: vinyl bed under mixes (ducks with kicks), clearer clip labels, BPM chips, live meters, **Burn disc** feedback.
+
+## Walk cycle polish (2026-10-02)
+
+- Confirmed walk/idle sheets are **4 directions × 1 pose** each (1280×308). Legacy `walk.png` 1024 grid is not a usable multi-frame cycle.
+- `strideBeat(walkPhase)` → plant / push / mid / recover; sheets swap idle↔walk on that curve; facing lean + plant contact shadow fill the gaps.
+- QA: `QA_BASE=http://127.0.0.1:5173/world node scripts/qa-walk-world.mjs`
