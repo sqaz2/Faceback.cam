@@ -44,8 +44,14 @@ export function MixerPanel() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Studio Mixer</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foam">Publish a mix</h2>
-          <p className="mt-1 text-sm text-muted">Build with loops, preview with vinyl ducking, then burn a disc for rooms and stages.</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foam">
+            {playing ? "Mix is live" : "Publish a mix"}
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            {playing
+              ? "Layered kick / bass / lead with vinyl duck — burn a disc, then Use a jukebox or take the stage."
+              : "Build richer genre layers, preview with vinyl ducking, then burn a disc for rooms and stages."}
+          </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setOverlay(null)}>
           Close
@@ -264,7 +270,7 @@ function SpectrumBars({ playing, genre, bpm }: { playing: boolean; genre: string
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
-          {playing ? "Vinyl + mix live" : "Preview meters"}
+          {playing ? "Live · kick ducks vinyl · take it to a jukebox/stage" : "Preview meters"}
         </p>
         <p className="text-[10px] font-medium uppercase tracking-wider text-foam/80">
           {genre} · {bpm} bpm

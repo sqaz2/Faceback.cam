@@ -68,3 +68,10 @@ This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Kee
 - Confirmed walk/idle sheets are **4 directions × 1 pose** each (1280×308). Legacy `walk.png` 1024 grid is not a usable multi-frame cycle.
 - `strideBeat(walkPhase)` → plant / push / mid / recover; sheets swap idle↔walk on that curve; facing lean + plant contact shadow fill the gaps.
 - QA: `QA_BASE=http://127.0.0.1:5173/world node scripts/qa-walk-world.mjs`
+
+## Mixer musicality polish (2026-10-02)
+
+- Richer layered Web Audio patterns (pad beds, ghost rims, perc, octave doubles) with clearer kick / bass / lead separation.
+- Vinyl duck from #13 kept; jukebox + stage (+ speakers/disco) pulse when a mix is playing.
+- Last automatic polish before playtest pause — no further polish PRs until Will feedback.
+

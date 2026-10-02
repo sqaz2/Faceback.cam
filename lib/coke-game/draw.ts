@@ -11,6 +11,7 @@ import {
   TOP_STYLES,
 } from "./data";
 import type { Actor, Appearance, PlacedItem, RoomDef, Dir } from "./types";
+import { getMixPulse, isMixPlaying } from "./audio";
 import { TILE_H, TILE_W, effectiveFootprint, itemFootprint, rotDegrees, seatLiftPx, tileToScreen, world } from "./world";
 
 export type SpriteMap = Record<string, HTMLImageElement>;
@@ -837,6 +838,62 @@ function drawName(ctx: CanvasRenderingContext2D, x: number, y: number, name: str
   ctx.fillText(name, x, y + 20);
 }
 
+
+function drawMusicGlow(ctx: CanvasRenderingContext2D, item: PlacedItem, t: number) {
+  const cat = CATALOG_MAP[item.catalogId];
+  if (!cat) return;
+  const live = isMixPlaying() || world.performing;
+  if (!live) return;
+  const isJuke = !!cat.music || item.catalogId === "jukebox";
+  const isStage = !!cat.stage;
+  const isSpeaker = item.catalogId === "speaker" || item.catalogId === "disco";
+  if (!isJuke && !isStage && !isSpeaker) return;
+  const fp = effectiveFootprint(cat, item.rot ?? 0);
+  const s = tileToScreen(item.x + (fp.w - 1) * 0.5, item.y + (fp.d - 1) * 0.5);
+  const pulse = getMixPulse(t);
+  const a = 0.18 + pulse * 0.42;
+  ctx.save();
+  if (isStage) {
+    const w = fp.w * TILE_W * 0.55;
+    const h = fp.d * TILE_H * 0.55;
+    ctx.fillStyle = `rgba(230,26,39,${0.12 + pulse * 0.28})`;
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y + 6, w, h * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,220,200,${0.25 + pulse * 0.45})`;
+    ctx.lineWidth = 2 + pulse * 1.5;
+    ctx.strokeRect(s.x - w * 0.55, s.y - 10, w * 1.1, 14);
+    // Spot beams
+    ctx.fillStyle = `rgba(255,248,242,${0.04 + pulse * 0.08})`;
+    ctx.beginPath();
+    ctx.moveTo(s.x - 18, s.y - 70);
+    ctx.lineTo(s.x - 40, s.y + 8);
+    ctx.lineTo(s.x + 40, s.y + 8);
+    ctx.lineTo(s.x + 18, s.y - 70);
+    ctx.closePath();
+    ctx.fill();
+  } else if (isJuke) {
+    ctx.fillStyle = `rgba(230,26,39,${a})`;
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y + 8, 22 + pulse * 8, 10 + pulse * 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Light strip on the cabinet
+    ctx.fillStyle = `rgba(255,200,180,${0.35 + pulse * 0.55})`;
+    ctx.fillRect(s.x - 10, s.y - 48, 20, 4);
+    ctx.fillStyle = `rgba(230,26,39,${0.45 + pulse * 0.4})`;
+    ctx.fillRect(s.x - 8, s.y - 36, 4, 10);
+    ctx.fillRect(s.x + 4, s.y - 36, 4, 10);
+  } else {
+    // Speakers / disco — subtle ring
+    ctx.strokeStyle = `rgba(244,232,220,${0.15 + pulse * 0.35})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y - (item.catalogId === "disco" ? 10 : 8), 14 + pulse * 6, 8 + pulse * 3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export function renderWorld(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -895,6 +952,7 @@ export function renderWorld(
   }
   list.sort((a, b) => a.sort - b.sort);
 
+  const musicT = reducedMotion ? 0 : world.time;
   for (const it of list) {
     if (it.kind === "furn") {
       const cat = CATALOG_MAP[it.item.catalogId];
@@ -903,6 +961,7 @@ export function renderWorld(
         : undefined;
       if (spr) drawSpriteItem(ctx, it.item, spr);
       else drawProcFurniture(ctx, it.item);
+      drawMusicGlow(ctx, it.item, musicT);
     } else {
       const a = it.actor;
       const s = tileToScreen(a.x, a.y);

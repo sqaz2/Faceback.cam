@@ -299,32 +299,47 @@ function duck(t: number, amount = 0.42, recover = 0.2) {
 
 function kick(t: number, dest: AudioNode, vel = 1) {
   if (!ctx) return;
+  // Sub body — sits under bass without fighting midrange leads.
   const body = ctx.createOscillator();
   body.type = "sine";
-  body.frequency.setValueAtTime(175, t);
-  body.frequency.exponentialRampToValueAtTime(46, t + 0.08);
+  body.frequency.setValueAtTime(168, t);
+  body.frequency.exponentialRampToValueAtTime(42, t + 0.09);
   const bg = ctx.createGain();
   bg.gain.setValueAtTime(0.0001, t);
-  bg.gain.exponentialRampToValueAtTime(1.05 * vel, t + 0.006);
-  bg.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+  bg.gain.exponentialRampToValueAtTime(1.18 * vel, t + 0.005);
+  bg.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
   body.connect(bg);
   bg.connect(dest);
   body.start(t);
-  body.stop(t + 0.36);
+  body.stop(t + 0.4);
+
+  // Mid thump for speaker punch / spectrum meters.
+  const thump = ctx.createOscillator();
+  thump.type = "triangle";
+  thump.frequency.setValueAtTime(98, t);
+  thump.frequency.exponentialRampToValueAtTime(55, t + 0.05);
+  const tg = ctx.createGain();
+  tg.gain.setValueAtTime(0.0001, t);
+  tg.gain.exponentialRampToValueAtTime(0.42 * vel, t + 0.004);
+  tg.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  thump.connect(tg);
+  tg.connect(dest);
+  thump.start(t);
+  thump.stop(t + 0.14);
 
   const click = ctx.createOscillator();
   click.type = "square";
-  click.frequency.value = 52;
+  click.frequency.value = 64;
   const cg = ctx.createGain();
-  cg.gain.setValueAtTime(0.2 * vel, t);
-  cg.gain.exponentialRampToValueAtTime(0.001, t + 0.016);
+  cg.gain.setValueAtTime(0.26 * vel, t);
+  cg.gain.exponentialRampToValueAtTime(0.001, t + 0.014);
   click.connect(cg);
   cg.connect(dest);
   click.start(t);
-  click.stop(t + 0.03);
+  click.stop(t + 0.028);
 
-  noiseHit(t, dest, 0.035, 0.1 * vel, "highpass", 2200, 0.5);
-  duck(t, 0.32, 0.26);
+  noiseHit(t, dest, 0.03, 0.12 * vel, "highpass", 2400, 0.55);
+  duck(t, 0.28, 0.28);
 }
 
 function eightOhEight(t: number, dest: AudioNode, freq: number, dur: number, vel: number) {
@@ -409,6 +424,74 @@ function clave(t: number, dest: AudioNode, vel = 0.12) {
   o.stop(t + 0.07);
 }
 
+function rim(t: number, dest: AudioNode, vel = 0.12) {
+  if (!ctx) return;
+  const o = ctx.createOscillator();
+  o.type = "triangle";
+  o.frequency.setValueAtTime(780, t);
+  o.frequency.exponentialRampToValueAtTime(420, t + 0.04);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vel, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  o.connect(g);
+  g.connect(panTo(dest, -0.16));
+  o.start(t);
+  o.stop(t + 0.06);
+  noiseHit(t, dest, 0.028, vel * 0.45, "bandpass", 3200, 1.4);
+}
+
+/** Soft chord pad under the bar — fills empty midrange without masking kick/bass. */
+function padBed(t: number, dest: AudioNode, freqs: number[], dur: number, peak: number) {
+  if (!ctx) return;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.setValueAtTime(900, t);
+  lp.frequency.linearRampToValueAtTime(720, t + dur);
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 140;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.18);
+  g.gain.setValueAtTime(peak * 0.85, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  lp.connect(hp);
+  hp.connect(g);
+  g.connect(dest);
+  freqs.forEach((f, i) => {
+    const o = ctx!.createOscillator();
+    o.type = i % 2 === 0 ? "sawtooth" : "triangle";
+    o.frequency.value = f;
+    const og = ctx!.createGain();
+    og.gain.value = (i === 0 ? 0.55 : 0.32) / Math.max(1, freqs.length * 0.7);
+    o.connect(og);
+    og.connect(lp);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  });
+}
+
+function cowbell(t: number, dest: AudioNode, vel = 0.1) {
+  if (!ctx) return;
+  [845, 1125].forEach((f, i) => {
+    const o = ctx!.createOscillator();
+    o.type = "square";
+    o.frequency.value = f;
+    const bp = ctx!.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = f;
+    bp.Q.value = 8;
+    const g = ctx!.createGain();
+    g.gain.setValueAtTime(vel * (i === 0 ? 1 : 0.55), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    o.connect(bp);
+    bp.connect(g);
+    g.connect(panTo(dest, 0.22));
+    o.start(t);
+    o.stop(t + 0.1);
+  });
+}
+
 function bassNote(t: number, dest: AudioNode, freq: number, dur: number, peak: number, filt: number, slideTo?: number) {
   if (!ctx) return;
   const o1 = ctx.createOscillator();
@@ -419,24 +502,41 @@ function bassNote(t: number, dest: AudioNode, freq: number, dur: number, peak: n
   o2.type = "square";
   o2.frequency.setValueAtTime(freq * 0.5, t);
   if (slideTo) o2.frequency.exponentialRampToValueAtTime(slideTo * 0.5, t + dur * 0.32);
+  // Pure sub sine — weight without the mud that fights kicks/leads.
+  const sub = ctx.createOscillator();
+  sub.type = "sine";
+  sub.frequency.setValueAtTime(Math.max(32, freq * 0.5), t);
+  if (slideTo) sub.frequency.exponentialRampToValueAtTime(Math.max(32, slideTo * 0.5), t + dur * 0.32);
   const lp = ctx.createBiquadFilter();
   lp.type = "lowpass";
-  lp.Q.value = 6.2;
-  lp.frequency.setValueAtTime(filt * 2.1, t);
-  lp.frequency.exponentialRampToValueAtTime(Math.max(80, filt * 0.4), t + dur * 0.38);
+  lp.Q.value = 5.4;
+  lp.frequency.setValueAtTime(filt * 1.85, t);
+  lp.frequency.exponentialRampToValueAtTime(Math.max(70, filt * 0.35), t + dur * 0.4);
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 38;
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(peak, t + 0.012);
-  g.gain.setValueAtTime(peak * 0.82, t + dur * 0.42);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+  g.gain.setValueAtTime(peak * 0.78, t + dur * 0.45);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const sg = ctx.createGain();
+  sg.gain.setValueAtTime(0.0001, t);
+  sg.gain.exponentialRampToValueAtTime(peak * 0.55, t + 0.014);
+  sg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o1.connect(lp);
   o2.connect(lp);
-  lp.connect(g);
+  lp.connect(hp);
+  hp.connect(g);
   g.connect(dest);
+  sub.connect(sg);
+  sg.connect(dest);
   o1.start(t);
   o2.start(t);
+  sub.start(t);
   o1.stop(t + dur + 0.02);
   o2.stop(t + dur + 0.02);
+  sub.stop(t + dur + 0.02);
 }
 
 function chordStab(
@@ -526,26 +626,37 @@ function leadNote(t: number, dest: AudioNode, freq: number, dur: number, peak: n
   const o = ctx.createOscillator();
   o.type = type;
   o.frequency.value = freq;
+  const twin = ctx.createOscillator();
+  twin.type = type === "sine" ? "triangle" : "sawtooth";
+  twin.frequency.value = freq * Math.pow(2, 7 / 1200);
   const vib = ctx.createOscillator();
-  vib.frequency.value = 5.4;
+  vib.frequency.value = 5.6;
   const vibg = ctx.createGain();
-  vibg.gain.value = freq * 0.01;
+  vibg.gain.value = freq * 0.012;
   vib.connect(vibg);
   vibg.connect(o.frequency);
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = Math.min(420, freq * 0.55);
   const lp = ctx.createBiquadFilter();
   lp.type = "lowpass";
-  lp.frequency.setValueAtTime(filt, t);
-  lp.frequency.exponentialRampToValueAtTime(filt * 0.5, t + dur);
+  lp.Q.value = 1.4;
+  lp.frequency.setValueAtTime(filt * 1.15, t);
+  lp.frequency.exponentialRampToValueAtTime(filt * 0.55, t + dur);
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(lp);
+  o.connect(hp);
+  twin.connect(hp);
+  hp.connect(lp);
   lp.connect(g);
-  g.connect(panTo(dest, 0.12));
+  g.connect(panTo(dest, 0.14));
   o.start(t);
+  twin.start(t);
   vib.start(t);
   o.stop(t + dur + 0.02);
+  twin.stop(t + dur + 0.02);
   vib.stop(t + dur + 0.02);
 }
 
@@ -822,46 +933,46 @@ type DrumKit = { k: number[]; s: number[]; h: number[]; o: number[]; c: number[]
 function drumKit(id: string, chorus: boolean, fill: boolean): DrumKit {
   if (id === "boom") {
     return {
-      k: velLine(fill ? "X.......X.....X." : "X.......X......."),
-      s: velLine(fill ? "....o......go.o." : "....o.......o..."),
-      h: velLine(chorus ? "x.x.x.x.x.x.x.x." : "x...x.x.x...x.x."),
-      o: velLine(chorus ? "......X........." : "................"),
+      k: velLine(fill ? "X.....g.X...X.g." : "X.....g.X......."),
+      s: velLine(fill ? "....o...g..go.o." : "....o...g...o..."),
+      h: velLine(chorus ? "x.x.x.x.x.x.x.Xx" : "x.g.x.x.x.g.x.x."),
+      o: velLine(chorus ? "......X.......X." : "......X........."),
       c: velLine("................"),
     };
   }
   if (id === "skip") {
     return {
-      k: velLine(fill ? "X..X..X...X...X." : "X..X..X...X....."),
-      s: velLine(fill ? "....o......g.o.." : "....o.......o.g."),
-      h: velLine(".x.x.x.Xx.x.x.x."),
+      k: velLine(fill ? "X..X..X.g.X.g.X." : "X..X..X.g.X....."),
+      s: velLine(fill ? "....o...g..g.o.." : "....o...g...o.g."),
+      h: velLine(".x.x.x.Xx.x.x.xX"),
       o: velLine("..............X."),
       c: velLine("................"),
     };
   }
   if (id === "four") {
     return {
-      k: velLine("X...X...X...X..."),
-      s: velLine(fill ? "....o......go.o." : "....o.......o..."),
-      h: velLine("xxxxxxxxxxxxxxxx"),
+      k: velLine(chorus ? "X...X...X...X.g." : "X...X...X...X..."),
+      s: velLine(fill ? "....o...g..go.o." : "....o.......o..."),
+      h: velLine(chorus ? "XxXxXxXxXxXxXxXx" : "xxxxxxxxxxxxxxxx"),
       o: velLine(chorus ? "......X.......X." : "......X........."),
-      c: velLine(mix.genre === "disco" ? "....o.......o..." : "................"),
+      c: velLine(mix.genre === "disco" ? "....o...g...o..." : "................"),
     };
   }
   if (id === "break") {
     return {
-      k: velLine(fill ? "X.....X.X.X....." : "X.....X...X....."),
-      s: velLine(fill ? "....o....o.ooo.." : "....o....o.o...."),
-      h: velLine("..x...x...x...x."),
+      k: velLine(fill ? "X...g.X.X.X..g.." : "X...g.X...X....."),
+      s: velLine(fill ? "....o..g.o.ooo.." : "....o..g.o.o...."),
+      h: velLine("..x.g.x...x.g.x."),
       o: velLine("..............X."),
       c: velLine("................"),
     };
   }
   return {
-    k: velLine("X.......X......."),
+    k: velLine(chorus ? "X.....g.X...g..." : "X.......X......."),
     s: velLine("................"),
     h: velLine("gxgxxgxgxgxxgxgx"),
-    o: velLine("................"),
-    c: velLine(fill ? "....o......g.o.." : "....o.......o..."),
+    o: velLine(chorus ? "......X........." : "................"),
+    c: velLine(fill ? "....o...g..g.o.." : "....o...g...o..."),
   };
 }
 
@@ -935,22 +1046,49 @@ function scheduleBar(start: number, dest: AudioNode, barIndex: number) {
   const drumsDest = dest;
   const melDest = duckGain ?? dest;
   const clapOn = mix.genre === "disco" || clips[0] === "clap";
+  const chordFreqs = chord.map((n) => n2f(n, root * 2));
+  const hook = (HOOKS[mix.genre] ?? HOOKS.pop)![barIndex % 2]!;
+  const energy = (chorus ? 1.12 : 0.88) * (mix.genre === "disco" || mix.genre === "rock" ? 1.08 : mix.genre === "chill" ? 0.9 : 1);
+
+  // Always-on soft pad when any melodic lane is live — rooms feel less hollow between hits.
+  if (clips[2] || clips[3]) {
+    padBed(tAt(0), melDest, chordFreqs, step * 15.5, (chorus ? 0.045 : 0.032) * energy);
+  }
 
   const drums = clips[0];
+  const kickSteps = new Set<number>();
   if (drums) {
     const kit = drumKit(drums, chorus, fill);
     for (let i = 0; i < 16; i++) {
-      const t = tAt(i) + (Math.random() - 0.5) * 0.004;
-      if (kit.k[i]) kick(t, drumsDest, kit.k[i]! * (fill && i > 12 ? 0.75 : 1));
-      if (kit.s[i]) snare(t, drumsDest, kit.s[i]!, clapOn && i % 4 === 0);
+      const t = tAt(i) + (Math.random() - 0.5) * 0.0035;
+      if (kit.k[i]) {
+        kickSteps.add(i);
+        kick(t, drumsDest, kit.k[i]! * (fill && i > 12 ? 0.78 : 1));
+      }
+      if (kit.s[i]) {
+        const ghost = kit.s[i]! < 0.4;
+        if (ghost) rim(t, drumsDest, kit.s[i]! * 0.9);
+        else snare(t, drumsDest, kit.s[i]!, clapOn && i % 4 === 0);
+      }
       if (kit.c[i]) snare(t, drumsDest, kit.c[i]!, true);
       if (kit.o[i]) hat(t, drumsDest, true, kit.o[i]!);
-      else if (kit.h[i]) hat(t, drumsDest, false, kit.h[i]! * (0.75 + (i % 4 === 2 ? 0.25 : 0)));
-      if (drums === "clap" || mix.genre === "disco") shaker(t, drumsDest, i % 2 === 0 ? 0.07 : 0.045);
-      if (fill && drums !== "clap" && (i === 13 || i === 15)) tom(t, drumsDest, i === 13 ? 186 : 138, 0.38);
+      else if (kit.h[i]) hat(t, drumsDest, false, kit.h[i]! * (0.72 + (i % 4 === 2 ? 0.28 : 0)));
+      if (drums === "clap" || mix.genre === "disco" || mix.genre === "latin") {
+        shaker(t, drumsDest, i % 2 === 0 ? 0.075 : 0.048);
+      }
+      if (fill && drums !== "clap" && (i === 13 || i === 15)) tom(t, drumsDest, i === 13 ? 186 : 138, 0.4);
+      // Ghost rims on offbeats when hats are sparse — sells groove without louder snares.
+      if (!kit.s[i] && !kit.k[i] && (i === 7 || i === 15) && chorus) rim(t, drumsDest, 0.08);
     }
     if (mix.genre === "latin") {
-      [0, 3, 6, 10, 12].forEach((i) => clave(tAt(i), drumsDest, 0.11));
+      [0, 3, 6, 10, 12].forEach((i) => clave(tAt(i), drumsDest, 0.12));
+      [2, 8, 14].forEach((i) => cowbell(tAt(i), drumsDest, chorus ? 0.09 : 0.06));
+    }
+    if (mix.genre === "rock" && chorus) {
+      [0, 8].forEach((i) => cowbell(tAt(i), drumsDest, 0.05));
+    }
+    if (mix.genre === "disco") {
+      [4, 12].forEach((i) => cowbell(tAt(i), drumsDest, 0.055));
     }
   }
 
@@ -958,58 +1096,71 @@ function scheduleBar(start: number, dest: AudioNode, barIndex: number) {
   if (bass) {
     const hits = bassLine(bass, fill);
     hits.forEach((h) => {
-      const t = tAt(h.s);
+      // Leave a tiny hole under kick attacks so kick/bass read as separate instruments.
+      const kickLock = kickSteps.has(h.s);
+      const t = tAt(h.s) + (kickLock ? step * 0.04 : 0);
       const f = n2f(chord[0]! + h.n, root);
       const slide = h.slide != null ? n2f(chord[0]! + h.slide, root) : undefined;
-      const dur = step * h.l;
+      const dur = step * h.l * (kickLock ? 0.92 : 1);
       if (bass === "deep") {
-        eightOhEight(t, dest, f, dur, 0.95);
-        bassNote(t, dest, f, dur * 0.55, 0.1, 380);
+        eightOhEight(t, dest, f, dur, 1);
+        bassNote(t, dest, f, dur * 0.55, 0.11, 360);
       } else {
-        const peak = bass === "funk" ? 0.17 : 0.15;
-        const filt = bass === "funk" ? 780 : bass === "pulse" ? 680 : 500;
+        const peak = (bass === "funk" ? 0.19 : bass === "pulse" ? 0.17 : 0.16) * (kickLock ? 0.82 : 1);
+        const filt = bass === "funk" ? 820 : bass === "pulse" ? 700 : 520;
         bassNote(t, dest, f, dur, peak, filt, slide);
+        // Octave fifth chirp on off hits — thicker without muddying the root.
+        if ((bass === "funk" || bass === "pulse") && h.s % 4 === 0) {
+          bassNote(t + step * 0.02, dest, f * 2, dur * 0.35, peak * 0.22, filt * 1.4);
+        }
       }
     });
   }
 
   const melody = clips[2];
   if (melody) {
-    const chordFreqs = chord.map((n) => n2f(n, root * 2));
-    const hook = (HOOKS[mix.genre] ?? HOOKS.pop)![barIndex % 2]!;
-    const energy = (chorus ? 1.08 : 0.86) * (mix.genre === "disco" || mix.genre === "rock" ? 1.06 : mix.genre === "chill" ? 0.92 : 1);
     if (melody === "keys") {
-      rhodes(tAt(0), melDest, chordFreqs, step * (chorus ? 7 : 6), 0.26 * energy);
-      rhodes(tAt(8), melDest, chordFreqs, step * 5, 0.18 * energy);
-      ;[3, 6, 11, 14].forEach((i, k) => {
-        leadNote(tAt(i), melDest, n2f(chord[k % chord.length]! + 12, root * 2), step * 1.3, 0.07 * energy, "triangle", 3000);
+      rhodes(tAt(0), melDest, chordFreqs, step * (chorus ? 7.5 : 6.2), 0.28 * energy);
+      rhodes(tAt(8), melDest, chordFreqs, step * 5.2, 0.2 * energy);
+      ;[2, 5, 10, 13].forEach((i, k) => {
+        leadNote(tAt(i), melDest, n2f(chord[k % chord.length]! + 12, root * 2), step * 1.4, 0.085 * energy, "triangle", 3400);
       });
+      if (chorus) {
+        chordStab(tAt(4), melDest, chordFreqs.map((f) => f * 2), step * 1.2, 0.07 * energy, "triangle", 2800);
+      }
     } else if (melody === "synth") {
-      superSaw(tAt(0), melDest, n2f(chord[0]! + 12, root * 2), step * 15.5, 0.09 * energy, chorus ? 2200 : 1500);
-      chordStab(tAt(0), melDest, chordFreqs, step * 14, 0.1 * energy, "sawtooth", 1400);
+      superSaw(tAt(0), melDest, n2f(chord[0]! + 12, root * 2), step * 15.5, 0.1 * energy, chorus ? 2600 : 1600);
+      chordStab(tAt(0), melDest, chordFreqs, step * 14, 0.11 * energy, "sawtooth", 1500);
       hook.forEach((n, i) => {
         if (i % 2 === 1 && !chorus) return;
-        leadNote(tAt(i * 2), melDest, n2f(n + 12, root * 2), step * 1.7, 0.08 * energy, "sawtooth", 2400);
+        leadNote(tAt(i * 2), melDest, n2f(n + 12, root * 2), step * 1.8, 0.095 * energy, "sawtooth", 2800);
+        if (chorus) leadNote(tAt(i * 2) + step * 0.05, melDest, n2f(n + 24, root * 2), step * 1.2, 0.045 * energy, "triangle", 3600);
       });
     } else if (melody === "bells") {
       hook.forEach((n, i) => {
-        leadNote(tAt(i * 2), melDest, n2f(n, root * 4), step * 2.6, 0.09 * energy, "sine", 4200);
+        leadNote(tAt(i * 2), melDest, n2f(n, root * 4), step * 2.8, 0.1 * energy, "sine", 4600);
+        if (i % 2 === 0) leadNote(tAt(i * 2 + 1), melDest, n2f(n + 7, root * 4), step * 1.2, 0.045 * energy, "sine", 5000);
       });
-      chordStab(tAt(0), melDest, chordFreqs.map((f) => f * 2), step * 8, 0.06, "sine", 3600);
+      chordStab(tAt(0), melDest, chordFreqs.map((f) => f * 2), step * 8, 0.07, "sine", 3800);
     } else if (melody === "pluck") {
       const arp = [...chord, chord[0]! + 12, chord[2]!, chord[1]!, chord[0]! + 12];
       arp.forEach((n, i) => {
-        pluckNote(tAt(i * 2), melDest, n2f(n, root * 2), step * 1.5, 0.16 * energy);
+        pluckNote(tAt(i * 2), melDest, n2f(n, root * 2), step * 1.55, 0.17 * energy);
       });
       if (chorus) {
         arp.forEach((n, i) => {
-          if (i % 2) pluckNote(tAt(i * 2 + 1), melDest, n2f(n + 12, root * 2), step * 0.9, 0.08);
+          if (i % 2) pluckNote(tAt(i * 2 + 1), melDest, n2f(n + 12, root * 2), step * 0.95, 0.09);
         });
       }
+      // Counter-melody under plucks so the lane isn't a dry arp.
+      leadNote(tAt(0), melDest, n2f(chord[0]! + 7, root * 2), step * 7, 0.04 * energy, "triangle", 2200);
     } else {
       hook.forEach((n, i) => {
-        const hold = i === 4 || i === 0 ? 2.2 : 1.4;
-        leadNote(tAt(i * 2), melDest, n2f(n + 12, root * 2), step * hold, 0.1 * energy, "square", 1900);
+        const hold = i === 4 || i === 0 ? 2.4 : 1.5;
+        leadNote(tAt(i * 2), melDest, n2f(n + 12, root * 2), step * hold, 0.115 * energy, "square", 2100);
+        if (chorus && i % 2 === 0) {
+          leadNote(tAt(i * 2) + step * 0.5, melDest, n2f(n + 19, root * 2), step * 1.1, 0.05 * energy, "triangle", 3000);
+        }
       });
     }
   }
@@ -1017,27 +1168,29 @@ function scheduleBar(start: number, dest: AudioNode, barIndex: number) {
   const vox = clips[3];
   if (vox) {
     const f = n2f(chord[2]! + 12, root * 2);
-    const v = chorus ? 1 : 0.7;
+    const v = chorus ? 1.05 : 0.72;
     if (vox === "ahhs") {
-      choir(tAt(0), melDest, f, step * 15, 0.07 * v);
+      choir(tAt(0), melDest, f, step * 15, 0.08 * v);
+      if (chorus) choir(tAt(8), melDest, n2f(chord[0]! + 24, root * 2), step * 7, 0.05 * v);
     } else if (vox === "hook") {
-      choir(tAt(0), melDest, f, step * 6, 0.08 * v);
-      choir(tAt(8), melDest, n2f(chord[0]! + 24, root * 2), step * 6, 0.07 * v);
+      choir(tAt(0), melDest, f, step * 6.5, 0.09 * v);
+      choir(tAt(8), melDest, n2f(chord[0]! + 24, root * 2), step * 6.5, 0.08 * v);
       ;[4, 12].forEach((i) => {
-        chordStab(tAt(i), melDest, [f * 2, f * 2.5], step * 0.8, 0.07, "triangle", 2400);
+        chordStab(tAt(i), melDest, [f * 2, f * 2.5], step * 0.85, 0.08, "triangle", 2600);
       });
     } else if (vox === "stabs") {
       [0, 4, 8, 12].forEach((i) => {
-        chordStab(tAt(i), melDest, [f * 2, f * 3], step * 0.55, 0.09 * v, "square", 2000);
+        chordStab(tAt(i), melDest, [f * 2, f * 3], step * 0.58, 0.1 * v, "square", 2200);
       });
+      if (chorus) chordStab(tAt(2), melDest, [f * 1.5, f * 2], step * 0.4, 0.06 * v, "sawtooth", 1800);
     } else if (vox === "shimmer") {
-      choir(tAt(2), melDest, f * 2, step * 12, 0.05 * v);
-      leadNote(tAt(8), melDest, f * 2, step * 7, 0.055, "sine", 4800);
-      if (chorus) leadNote(tAt(0), melDest, n2f(scale[4]! + 24, root * 2), step * 4, 0.04, "sine", 5000);
+      choir(tAt(2), melDest, f * 2, step * 12, 0.055 * v);
+      leadNote(tAt(8), melDest, f * 2, step * 7, 0.06, "sine", 5200);
+      if (chorus) leadNote(tAt(0), melDest, n2f(scale[4]! + 24, root * 2), step * 4, 0.045, "sine", 5400);
     } else {
-      choir(tAt(0), melDest, f, step * 3.5, 0.08 * v);
-      choir(tAt(8), melDest, n2f(chord[1]! + 12, root * 2), step * 3.5, 0.07 * v);
-      if (chorus) choir(tAt(12), melDest, n2f(chord[0]! + 24, root * 2), step * 3, 0.06);
+      choir(tAt(0), melDest, f, step * 3.6, 0.09 * v);
+      choir(tAt(8), melDest, n2f(chord[1]! + 12, root * 2), step * 3.6, 0.08 * v);
+      if (chorus) choir(tAt(12), melDest, n2f(chord[0]! + 24, root * 2), step * 3.2, 0.07);
     }
   }
 }
@@ -1112,6 +1265,20 @@ export function stopMix() {
 
 export function isMixPlaying() {
   return mix.playing;
+}
+
+export function getMixBpm() {
+  return bpmOf();
+}
+
+/** 0..1 pulse synced to the mix clock — for jukebox/stage glow. */
+export function getMixPulse(now = typeof performance !== "undefined" ? performance.now() / 1000 : 0) {
+  if (!mix.playing) return 0;
+  const bpm = bpmOf();
+  const beatHz = bpm / 60;
+  // Prefer AudioContext clock when unlocked so glow matches audible kicks.
+  const t = ctx ? ctx.currentTime : now;
+  return 0.4 + 0.6 * Math.abs(Math.sin(t * Math.PI * beatHz));
 }
 
 export function getSpectrum(out: Uint8Array<ArrayBuffer>): boolean {

@@ -74,7 +74,7 @@ These are the follow-ups. All of them are still in force.
 - **Every wardrobe option must be visible** in the inventory/create UI and on the in-room avatar.
 - **Isometric furniture grounded on tiles**, not floating billboards you walk under.
 - **Cherry-red + cream lounge** aesthetic. Wordmark / “Est. 2002 · Studios open.”
-- **Music mixer should feel like burning a disc** and dropping it on a jukebox / performing on stage. User said the music “could be better” after the first pass — `src/lib/game/audio.ts` is a Web Audio mixer with genres/clips, vinyl, ducking. Still fair game to improve.
+- **Music mixer should feel like burning a disc** and dropping it on a jukebox / performing on stage. User said the music “could be better” after the first pass — root `lib/coke-game/audio.ts` is a Web Audio mixer with layered genre patterns, kick/bass/lead contrast, vinyl ducking, and stage/jukebox glow. Taste feedback still welcome; no trademarked samples.
 - **Do not gold-plate** wall/floor painting or “a dozen sofas” unless asked this turn — but those are on the wishlist.
 - User-facing copy: product language. V-Ego, Red Room, decibels (dB), burned discs. Not “Habbo” in the UI.
 

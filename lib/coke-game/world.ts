@@ -677,7 +677,7 @@ function doUse(p: Actor) {
       onToast?.("Jukebox off.");
     } else {
       startMix();
-      onToast?.("Jukebox on.");
+      onToast?.("Jukebox on — room speakers glow with the beat.");
       world.actors.forEach((a) => {
         if (!a.isPlayer && Math.random() > 0.4) a.action = "dance";
       });
@@ -716,7 +716,7 @@ export function startPerformance(): boolean {
   world.performUntil = world.time + 28;
   p.action = "dance";
   p.path = [];
-  onToast?.("You're on. The room is listening.");
+  onToast?.("You're on — stage lights pulse with your mix.");
   world.actors.forEach((a) => {
     if (a.isPlayer) return;
     a.action = "dance";
