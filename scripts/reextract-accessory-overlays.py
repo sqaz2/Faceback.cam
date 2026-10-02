@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Re-extract Cap/Shades/Headphones overlays from red accessory masters.
+"""Re-extract Cap / Shades / Headphones overlays from red accessory masters.
 
 Masters are 4x4 (actions x dirs) on green screen with red accessories.
 Outputs 4-dir strips at 1280x308 matching runtime wardrobe sheets.
 Brand-safe: only recolors/slices existing master pixels — no drawn cubes.
-Keeps head-band components so shades/headphones sit cleanly without body leak.
+
+Shades get an eye-band thicken + lens/gloss remap so they read as glasses
+(not a flat red censor bar). Cap/Headphones keep head-band CC filters.
 """
 from __future__ import annotations
 
@@ -94,7 +96,6 @@ def components(mask: np.ndarray) -> list[list[tuple[int, int]]]:
 
 def keep_accessory(mask: np.ndarray, cell_h: int, style: str) -> np.ndarray:
     """Keep the main accessory mass in the upper head band; drop body strays."""
-    # Upper fraction that can contain accessories (dance lifts the head).
     band = 0.28 if style == "shades" else 0.48 if style == "headphones" else 0.42
     y_cut = int(cell_h * band)
     clipped = mask.copy()
@@ -113,11 +114,9 @@ def keep_accessory(mask: np.ndarray, cell_h: int, style: str) -> np.ndarray:
         xs = [c[1] for c in cells]
         hspan = max(ys) - min(ys) + 1
         wspan = max(xs) - min(xs) + 1
-        # Reject tall thin body-outline streaks.
         if hspan > cell_h * 0.22 and hspan > wspan * 1.6:
             continue
         cy = sum(ys) / n
-        # Prefer wide headgear / eyewear near the crown/eyes.
         wide_bonus = 1.25 if wspan >= hspan else 0.75
         crown_bonus = 1.3 if cy < cell_h * 0.18 else 1.0 if cy < cell_h * 0.22 else 0.7
         scored.append((n * wide_bonus * crown_bonus, cells))
@@ -131,14 +130,12 @@ def keep_accessory(mask: np.ndarray, cell_h: int, style: str) -> np.ndarray:
             break
         ys = [c[0] for c in cells]
         cy = sum(ys) / len(cells)
-        # Drop late body speckles far below the crown/eye band.
         if cy > cell_h * (0.22 if style == "shades" else 0.36 if style == "cap" else 0.38):
             continue
         kept_cells.append(cells)
         for yy, xx in cells:
             keep[yy, xx] = True
 
-    # Shades: absorb tiny nearby fragments inside the main bbox (lens gaps).
     if style == "shades" and scored:
         main = scored[0][1]
         mys = [c[0] for c in main]
@@ -153,44 +150,171 @@ def keep_accessory(mask: np.ndarray, cell_h: int, style: str) -> np.ndarray:
     return keep
 
 
+def shades_eye_band(cell: np.ndarray) -> np.ndarray:
+    """Thicken the master wraparound red strip into a readable eye-band silhouette."""
+    ch, cw = cell.shape[:2]
+    core = red_accessory(cell, "shades") & ~gray_clothes(cell)
+    # Prefer strict red/maroon for the peak row (avoid sparse body maroon)
+    r, g, b = cell[:, :, 0].astype(np.float32), cell[:, :, 1].astype(np.float32), cell[:, :, 2].astype(np.float32)
+    strict = ((r > 120) & (r > g + 38) & (r > b + 32) & ((r - (g + b) / 2) > 42)) | (
+        (r > 75) & (r > g + 22) & (r > b + 20) & ((r - (g + b) / 2) > 25) & (r > g * 1.28)
+    )
+    strict &= ~green_mask(cell) & ~peach_mask(cell) & ~gray_clothes(cell)
+    y_lim = int(ch * 0.28)
+    dens = strict[:y_lim].sum(axis=1).astype(float)
+    if dens.max() < 5:
+        dens = core[:y_lim].sum(axis=1).astype(float)
+        if dens.max() < 5:
+            return np.zeros((ch, cw), dtype=bool)
+    peak = int(np.argmax(dens))
+    y0 = y1 = peak
+    while y0 > 0 and dens[y0 - 1] >= max(4, dens[peak] * 0.15):
+        y0 -= 1
+    while y1 < y_lim - 1 and dens[y1 + 1] >= max(4, dens[peak] * 0.15):
+        y1 += 1
+    strip = np.zeros_like(core)
+    strip[y0 : y1 + 1] = core[y0 : y1 + 1] | strict[y0 : y1 + 1]
+    thick = dilate(strip, 5)
+    mid = (y0 + y1) // 2
+    half = 9
+    ny0 = max(0, mid - half)
+    ny1 = min(int(ch * 0.30) - 1, mid + half)
+    thick[:ny0] = False
+    thick[ny1 + 1 :] = False
+    xs = np.where(strip.any(axis=0))[0]
+    if len(xs) == 0:
+        return thick
+    x0, x1 = int(xs.min()) - 2, int(xs.max()) + 2
+    thick[:, : max(0, x0)] = False
+    thick[:, min(cw, x1 + 1) :] = False
+    green = green_mask(cell)
+    thick &= ~green
+    cols = np.where(strip.any(axis=0))[0]
+    for x in cols:
+        thick[ny0 : ny1 + 1, x] = True
+    for x in cols[:3].tolist() + cols[-3:].tolist():
+        thick[ny0, x] = False
+        thick[ny1, x] = False
+    return thick & ~green
+
+
+def remap_glasses(cell: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Recolor shade pixels into frame + darker lenses + gloss (reads as glasses)."""
+    out = np.zeros_like(cell)
+    ys, xs = np.where(mask)
+    if len(ys) == 0:
+        return out
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    bh = max(1, y1 - y0 + 1)
+    bw = max(1, x1 - x0 + 1)
+    for y, x in zip(ys.tolist(), xs.tolist()):
+        v = (y - y0) / max(1, bh - 1)
+        u = (x - x0) / max(1, bw - 1)
+
+        def in_lens(cx: float) -> bool:
+            return ((u - cx) / 0.27) ** 2 + ((v - 0.58) / 0.40) ** 2 <= 1.0
+
+        left, right = in_lens(0.30), in_lens(0.70)
+        bridge = abs(u - 0.5) < 0.065 and 0.2 < v < 0.92
+        temple = u < 0.11 or u > 0.89
+        if bridge:
+            nr, ng, nb = 92, 14, 22
+        elif left or right:
+            cx = 0.30 if left else 0.70
+            d = ((u - cx) / 0.27) ** 2 + ((v - 0.58) / 0.40) ** 2
+            base = 0.18 + 0.24 * (1.0 - min(1.0, d))
+            nr, ng, nb = int(75 * base + 14), int(8 * base + 2), int(16 * base + 4)
+        elif temple:
+            nr, ng, nb = 198, 30, 42
+        else:
+            nr, ng, nb = 212, 34, 46
+        if v < 0.22 and 0.1 < u < 0.9 and not bridge:
+            nr = min(255, nr + 95)
+            ng = min(255, ng + 62)
+            nb = min(255, nb + 62)
+        if abs(u - 0.60) < 0.05 and abs(v - 0.32) < 0.08:
+            nr, ng, nb = 252, 205, 210
+        if v > 0.82:
+            nr, ng, nb = int(nr * 0.55), int(ng * 0.55), int(nb * 0.55)
+        out[y, x] = [nr, ng, nb, 255]
+    for y, x in zip(ys.tolist(), xs.tolist()):
+        v = (y - y0) / max(1, bh - 1)
+        u = (x - x0) / max(1, bw - 1)
+        n = sum(
+            1
+            for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1))
+            if 0 <= y + dy < mask.shape[0] and 0 <= x + dx < mask.shape[1] and mask[y + dy, x + dx]
+        )
+        al = 255
+        if n <= 1:
+            al = 140
+        elif n == 2:
+            al = 200
+        if abs(u - 0.5) < 0.05 and v > 0.58:
+            al = min(al, 100)
+        out[y, x, 3] = al
+    return out
+
+
+def soft_alpha(out: np.ndarray, mask: np.ndarray) -> None:
+    h, w = mask.shape
+    for yy in range(1, h - 1):
+        for xx in range(1, w - 1):
+            if not mask[yy, xx]:
+                continue
+            n = (
+                int(mask[yy - 1, xx])
+                + int(mask[yy + 1, xx])
+                + int(mask[yy, xx - 1])
+                + int(mask[yy, xx + 1])
+            )
+            if n <= 1:
+                out[yy, xx, 3] = 145
+            elif n == 2:
+                out[yy, xx, 3] = 205
+
+
+def shift_down(rgba: np.ndarray, dy: int) -> np.ndarray:
+    if dy <= 0:
+        return rgba
+    out = np.zeros_like(rgba)
+    out[dy:, :, :] = rgba[:-dy, :, :]
+    return out
+
+
 def extract_style(body: str, style: str) -> None:
     master = np.array(Image.open(MASTERS / f"{body}-{style}.png").convert("RGBA"))
-    acc = red_accessory(master, style)
-    dil_n = 2 if style == "shades" else 1
-    grown = dilate(acc, dil_n) & ~green_mask(master) & ~peach_mask(master)
-    r, g, b = master[:, :, 0].astype(np.float32), master[:, :, 1].astype(np.float32), master[:, :, 2].astype(np.float32)
-    near = (r > g + 12) & (r > b + 10) & (r > 60)
-    if style == "headphones":
-        near = near | ((r > 165) & (g > 125) & (b > 125) & (r > g))
-    if style == "shades":
-        near = near | ((r > g + 5) & (r > b) & (r > 45) & ((r + g + b) / 3 < 160))
-    acc = acc | (grown & near)
-
     h, w = master.shape[:2]
     cell_h, cell_w = h // 4, w // 4
+
+    if style != "shades":
+        acc = red_accessory(master, style)
+        dil_n = 1
+        grown = dilate(acc, dil_n) & ~green_mask(master) & ~peach_mask(master)
+        r, g, b = master[:, :, 0].astype(np.float32), master[:, :, 1].astype(np.float32), master[:, :, 2].astype(np.float32)
+        near = (r > g + 12) & (r > b + 10) & (r > 60)
+        if style == "headphones":
+            near = near | ((r > 165) & (g > 125) & (b > 125) & (r > g))
+        acc = acc | (grown & near)
+
     for row, action in enumerate(ACTIONS):
         strip = np.zeros((cell_h, cell_w * 4, 4), dtype=np.uint8)
         for col in range(4):
             y0, x0 = row * cell_h, col * cell_w
             cell = master[y0 : y0 + cell_h, x0 : x0 + cell_w]
-            mask = keep_accessory(acc[y0 : y0 + cell_h, x0 : x0 + cell_w], cell_h, style)
-            out = np.zeros_like(cell)
-            out[mask] = cell[mask]
-            out[:, :, 3] = np.where(mask, 255, 0).astype(np.uint8)
-            for yy in range(1, cell_h - 1):
-                for xx in range(1, cell_w - 1):
-                    if not mask[yy, xx]:
-                        continue
-                    n = (
-                        int(mask[yy - 1, xx])
-                        + int(mask[yy + 1, xx])
-                        + int(mask[yy, xx - 1])
-                        + int(mask[yy, xx + 1])
-                    )
-                    if n <= 1:
-                        out[yy, xx, 3] = 145
-                    elif n == 2:
-                        out[yy, xx, 3] = 205
+            if style == "shades":
+                mask = shades_eye_band(cell)
+                out = remap_glasses(cell, mask)
+            else:
+                mask = keep_accessory(acc[y0 : y0 + cell_h, x0 : x0 + cell_w], cell_h, style)
+                out = np.zeros_like(cell)
+                out[mask] = cell[mask]
+                out[:, :, 3] = np.where(mask, 255, 0).astype(np.uint8)
+                soft_alpha(out, mask)
+            # Woman headphones sit a touch high on the scalp — nudge down.
+            if style == "headphones" and body == "woman" and action == "sit":
+                out = shift_down(out, 6)
             strip[:, col * cell_w : (col + 1) * cell_w] = out
         im = Image.fromarray(strip, "RGBA").resize((STRIP_W, STRIP_H), Image.Resampling.LANCZOS)
         for dest_root in (OUT_PUBLIC, OUT_NESTED):
