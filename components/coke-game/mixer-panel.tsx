@@ -1,4 +1,4 @@
-import { Radio, Play, Square, Sparkles } from "lucide-react";
+import { Radio, Play, Square, Sparkles, Dices, VolumeX, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/coke-game/button";
 import { CLIPS, GENRES, TRACKS } from "@/lib/coke-game/data";
@@ -13,6 +13,8 @@ import {
   sfxWin,
   startMix,
   stopMix,
+  surpriseMix,
+  toggleTrackMuted,
   unlockAudio,
 } from "@/lib/coke-game/audio";
 import { useGame } from "@/lib/coke-game/store";
@@ -65,9 +67,31 @@ export function MixerPanel() {
       <SpectrumBars />
 
       <div className="grid gap-3">
-        {TRACKS.map((track, ti) => (
-          <div key={track} className="rounded-[16px] border border-border bg-ink-soft p-3">
-            <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">{track}</p>
+        {TRACKS.map((track, ti) => {
+          const muted = mix.muted?.[ti] ?? false;
+          return (
+          <div key={track} className={cn("rounded-[16px] border border-border bg-ink-soft p-3", muted && "opacity-55")}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">{track}</p>
+              <button
+                type="button"
+                aria-pressed={muted}
+                aria-label={muted ? `Unmute ${track}` : `Mute ${track}`}
+                title={muted ? "Unmute lane" : "Mute lane"}
+                onClick={() => {
+                  sfxClick();
+                  toggleTrackMuted(ti as 0 | 1 | 2 | 3);
+                  refresh();
+                }}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold uppercase tracking-wider",
+                  muted ? "bg-coke/25 text-foam" : "bg-ink-mid text-cream hover:bg-ink",
+                )}
+              >
+                {muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
+                {muted ? "Muted" : "Mute"}
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
               {CLIPS[track].map((c) => {
                 const on = mix.clips[ti] === c.id;
@@ -91,7 +115,8 @@ export function MixerPanel() {
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -102,7 +127,32 @@ export function MixerPanel() {
           maxLength={28}
           aria-label="Mix name"
         />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="ink"
+            onClick={() => {
+              sfxClick();
+              const pick = <T extends { id: string }>(list: readonly T[]) =>
+                list[Math.floor(Math.random() * list.length)]!.id;
+              const result = surpriseMix();
+              // Resample each lane from the full clip catalog for more variety than the genre defaults.
+              setMixClips([
+                pick(CLIPS.drums),
+                pick(CLIPS.bass),
+                pick(CLIPS.melody),
+                pick(CLIPS.vox),
+              ]);
+              setTitle(`${GENRES.find((g) => g.id === result.genre)?.name ?? "Mix"} Drop`);
+              unlockAudio();
+              stopMix();
+              startMix();
+              refresh();
+              setToast("Surprise mix — tweak lanes or publish it.");
+            }}
+          >
+            <Dices className="size-4" />
+            Surprise
+          </Button>
           <Button
             variant="cream"
             onClick={() => {

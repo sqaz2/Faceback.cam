@@ -52,8 +52,9 @@ test("FACEBACK.CAM composes every visible character choice from generated RGBA s
   const renderer = await readFile(new URL("../lib/coke-game/draw.ts", import.meta.url), "utf8");
   assert.match(renderer, /loadActionSheets\("hair"/);
   assert.match(renderer, /loadActionSheets\("accessory"/);
-  assert.match(renderer, /ctx\.drawImage\(hair/);
-  assert.match(renderer, /if \(accessoryImg\) ctx\.drawImage/);
+  assert.match(renderer, / Progressive layers/);
+  assert.match(renderer, /hairOk/);
+  assert.match(renderer, /accessoryOk && accessoryImg/);
   assert.match(renderer, /ensureAvatarSheets\(a\.body \?\? 0\)/);
   const drawAppearanceBody = renderer.slice(renderer.indexOf("export function drawAppearance"), renderer.indexOf("function drawBubble"));
   assert.doesNotMatch(drawAppearanceBody, /drawChibi|drawWardrobeHair|drawWardrobeFront/);

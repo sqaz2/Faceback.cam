@@ -164,9 +164,9 @@ Verified QA numbers for sofa at `(8,8)`:
 
 | id | sitY | sitLift | sitSpread | notes |
 | --- | --- | --- | --- | --- |
-| sofa | 0.04 | 12 | 0.95 | two cushions |
-| chair | 0.08 | 16 | — | higher seat |
-| stool | 0.10 | 14 | — | |
+| sofa | 0.10 | 6 | 0.88 | two cushions (integrated `lib/coke-game`) |
+| chair | 0.14 | 5 | — | nest into cushion |
+| stool | 0.12 | 12 | — | |
 | booth | 0.10 | 8 | 0.90 | two seats |
 | bean | 0.22 | -2 | — | low; negative lift is OK |
 
