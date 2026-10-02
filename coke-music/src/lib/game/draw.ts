@@ -569,6 +569,7 @@ function drawSpriteItem(ctx: CanvasRenderingContext2D, item: PlacedItem, img: HT
 function drawSeatApron(ctx: CanvasRenderingContext2D, item: PlacedItem, img: HTMLImageElement) {
   const cat = CATALOG_MAP[item.catalogId]!;
   if (!cat.sit) return;
+  const id = item.catalogId;
   const { w, d } = effectiveFootprint(cat, item.rot ?? 0);
   const s = tileToScreen(item.x + (w - 1) * 0.5, item.y + (d - 1) * 0.5);
   const footY = s.y + TILE_H * 0.5;
@@ -581,22 +582,63 @@ function drawSeatApron(ctx: CanvasRenderingContext2D, item: PlacedItem, img: HTM
   else destW = Math.min(Math.max(destW, tileSpan * 0.7), tileSpan * 1.15);
   const dx = s.x - destW / 2;
   const dy = footY - destH;
-  // Opaque front skirt under the cushion lip (covers open between-leg gap so sit feet
-  // cannot peek under). Habbo-like nestle keeps upper legs visible above this skirt.
-  const skirtTop = dy + destH * 0.62;
-  const skirtBot = dy + destH * 0.92;
-  ctx.fillStyle = "#7a0810";
-  ctx.beginPath();
-  ctx.moveTo(dx + destW * 0.14, skirtTop);
-  ctx.lineTo(dx + destW * 0.86, skirtTop);
-  ctx.lineTo(dx + destW * 0.78, skirtBot);
-  ctx.lineTo(dx + destW * 0.22, skirtBot);
-  ctx.closePath();
-  ctx.fill();
-  // Slight lighter lip along the top edge of the skirt
-  ctx.fillStyle = "#9a121c";
-  ctx.fillRect(dx + destW * 0.14, skirtTop, destW * 0.72, Math.max(2, destH * 0.04));
-  const frac = 0.42;
+  // Per-seat skirt: booth is darker burgundy; bean is a soft oval (no open leg gap);
+  // stool skips the opaque fill and only redraws the lower sprite slab.
+  let fill = "#7a0810";
+  let lip = "#9a121c";
+  let skirtTopF = 0.62;
+  let skirtBotF = 0.92;
+  let sideIn = 0.14;
+  let frac = 0.42;
+  let drawFill = true;
+  let oval = false;
+  if (id === "booth") {
+    fill = "#4a0810";
+    lip = "#6e1218";
+    skirtTopF = 0.58;
+    skirtBotF = 0.93;
+    sideIn = 0.12;
+    frac = 0.44;
+  } else if (id === "bean") {
+    fill = "#8a0a14";
+    lip = "#b0121c";
+    skirtTopF = 0.36;
+    skirtBotF = 0.98;
+    sideIn = 0.04;
+    frac = 0.62;
+    oval = true;
+  } else if (id === "stool") {
+    drawFill = false;
+    frac = 0.34;
+  }
+  if (drawFill) {
+    const skirtTop = dy + destH * skirtTopF;
+    const skirtBot = dy + destH * skirtBotF;
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    if (oval) {
+      const cx = dx + destW / 2;
+      const cy = (skirtTop + skirtBot) / 2;
+      const rx = destW * (0.5 - sideIn);
+      const ry = Math.max(4, (skirtBot - skirtTop) / 2);
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    } else {
+      ctx.moveTo(dx + destW * sideIn, skirtTop);
+      ctx.lineTo(dx + destW * (1 - sideIn), skirtTop);
+      ctx.lineTo(dx + destW * (1 - sideIn - 0.08), skirtBot);
+      ctx.lineTo(dx + destW * (sideIn + 0.08), skirtBot);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.fillStyle = lip;
+    if (oval) {
+      ctx.beginPath();
+      ctx.ellipse(dx + destW / 2, skirtTop + destH * 0.04, destW * (0.5 - sideIn) * 0.9, Math.max(2, destH * 0.035), 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(dx + destW * sideIn, skirtTop, destW * (1 - 2 * sideIn), Math.max(2, destH * 0.04));
+    }
+  }
   const srcH = img.naturalHeight;
   const srcW = img.naturalWidth;
   const sy = Math.floor(srcH * (1 - frac));

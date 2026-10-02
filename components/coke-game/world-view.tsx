@@ -20,6 +20,7 @@ import { setMuted as setAudioMuted, sfxClick, unlockAudio } from "@/lib/coke-gam
 import { useGame } from "@/lib/coke-game/store";
 import {
   clickWorld,
+  enterRoom,
   movePlayerBy,
   occupySeat,
   pickupAt,
@@ -102,9 +103,10 @@ export function WorldView() {
         player: typeof player;
         clickWorld: typeof clickWorld;
         setPlayerLook: typeof setPlayerLook;
+        enterRoom: typeof enterRoom;
       };
     };
-    w.__vego = { world, occupySeat, player, clickWorld, setPlayerLook };
+    w.__vego = { world, occupySeat, player, clickWorld, setPlayerLook, enterRoom };
     const canvas = canvasRef.current;
     if (!canvas) return;
     let raf = 0;

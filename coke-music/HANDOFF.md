@@ -164,11 +164,11 @@ Verified QA numbers for sofa at `(8,8)`:
 
 | id | sitY | sitLift | sitSpread | notes |
 | --- | --- | --- | --- | --- |
-| sofa | 0.10 | 6 | 0.88 | two cushions (integrated `lib/coke-game`) |
-| chair | 0.14 | 5 | — | nest into cushion |
-| stool | 0.12 | 12 | — | |
-| booth | 0.10 | 8 | 0.90 | two seats |
-| bean | 0.22 | -2 | — | low; negative lift is OK |
+| sofa | 0.14 | 18 | 0.92 | two cushions + seat skirt / foot clip |
+| chair | 0.12 | 15 | — | nest into cushion |
+| stool | 0.13 | 15 | — | thin seat; apron redraw only |
+| booth | 0.14 | 16 | 0.92 | two seats; darker burgundy skirt |
+| bean | 0.20 | 1 | — | low nestle + oval apron |
 
 `sitLift` is pixels **up** when drawing a sitting actor (`draw.ts` `drawAppearance`). The **sit sprite is a chair-sit** (thighs forward, lower legs hanging). That pose is load-bearing: the old sit sheet was a **floor sit** (butt at the bottom of the sprite), so planting feet on the tile put the butt on the **floor / arm / front lip**. Do not go back to a seiza/floor-sit sheet.
 
