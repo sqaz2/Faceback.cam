@@ -70,7 +70,7 @@ function loadActionSheets(category: "top" | "bottom" | "shoes" | "hair" | "acces
     const img = new Image();
     img.decoding = "async";
     img.addEventListener("load", () => frameCache.clear());
-    img.src = `/coke-music/art/avatar/generated/${category}/${body}/${assetSlug(style)}/${action}.png?v=9`;
+    img.src = `/coke-music/art/avatar/generated/${category}/${body}/${assetSlug(style)}/${action}.png?v=10`;
     set[action] = img;
   }
   return set;
@@ -109,6 +109,12 @@ function extractFixedCell(src: HTMLImageElement, dir: number, size = 96): HTMLCa
 
 function actionSheet(set: AvatarSheets, action: Actor["action"]) {
   return action === "sit" ? set.sit : action === "walk" ? set.walk : action === "dance" || action === "wave" ? set.dance : set.idle;
+}
+
+/** Two-pose stride without a full walk-cycle rewrite: planted idle ↔ mid-stride walk. */
+function strideAction(action: Actor["action"], phase: number): Actor["action"] {
+  if (action !== "walk") return action;
+  return Math.sin(phase) >= 0 ? "walk" : "idle";
 }
 
 function remapCanvas(c: HTMLCanvasElement, a: Appearance): HTMLCanvasElement {
@@ -217,16 +223,22 @@ function composeAvatar(
   a: Appearance,
   dir: number,
   action: Actor["action"],
+  phase = 0,
 ): HTMLCanvasElement | null {
   const sh = ensureAvatarSheets(a.body ?? 0);
   const wardrobe = ensureWardrobeSheets(a.body ?? 0);
-  const bodyImg = actionSheet(sh, action);
-  const topImg = actionSheet(wardrobe.top[a.top] ?? wardrobe.top[0]!, action);
-  const bottomImg = actionSheet(wardrobe.bottom[a.bottom] ?? wardrobe.bottom[0]!, action);
-  const shoeImg = actionSheet(wardrobe.shoes[a.shoe ?? 0] ?? wardrobe.shoes[0]!, action);
-  const hairImg = actionSheet(wardrobe.hair[a.hair] ?? wardrobe.hair[0]!, action);
+  const pose = strideAction(action, phase);
+  const bodyImg = actionSheet(sh, pose);
+  const topImg = actionSheet(wardrobe.top[a.top] ?? wardrobe.top[0]!, pose);
+  const bottomImg = actionSheet(wardrobe.bottom[a.bottom] ?? wardrobe.bottom[0]!, pose);
+  const shoeImg = actionSheet(wardrobe.shoes[a.shoe ?? 0] ?? wardrobe.shoes[0]!, pose);
+  const hairImg = actionSheet(wardrobe.hair[a.hair] ?? wardrobe.hair[0]!, pose);
+  const scalpImg =
+    a.hair === 4 || a.hair === 5
+      ? actionSheet(wardrobe.hair[0] ?? wardrobe.hair[a.hair]!, pose)
+      : undefined;
   const accessorySet = a.accessory > 0 ? wardrobe.accessories[a.accessory - 1] : undefined;
-  const accessoryImg = accessorySet ? actionSheet(accessorySet, action) : undefined;
+  const accessoryImg = accessorySet ? actionSheet(accessorySet, pose) : undefined;
   if (!sheetReady(bodyImg)) return null;
 
   const bottomOk = sheetReady(bottomImg);
@@ -235,7 +247,7 @@ function composeAvatar(
   const hairOk = sheetReady(hairImg);
   const accessoryOk = !accessoryImg || sheetReady(accessoryImg);
   const wardrobeReady = bottomOk && topOk && shoesOk && hairOk && accessoryOk;
-  const key = `dmap-${a.body ?? 0}-${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoe ?? 0}-${a.shoeColor}-${a.accessory}-${action}-${dir}-${wardrobeReady ? "full" : "partial"}`;
+  const key = `dmap-${a.body ?? 0}-${a.skin}-${a.hair}-${a.hairColor}-${a.top}-${a.topColor}-${a.bottom}-${a.bottomColor}-${a.shoe ?? 0}-${a.shoeColor}-${a.accessory}-${pose}-${dir}-${wardrobeReady ? "full" : "partial"}`;
   const hit = frameCache.get(key);
   if (hit) return hit;
 
@@ -277,11 +289,18 @@ function composeAvatar(
     );
   }
   if (hairOk) {
-    ctx.drawImage(
-      tintToColor(extractFixedCell(hairImg, dir), HAIR_COLORS[a.hairColor] ?? HAIR_COLORS[0]!),
-      0,
-      0,
-    );
+    const hairColor = HAIR_COLORS[a.hairColor] ?? HAIR_COLORS[0]!;
+    // Tail/Bangs: Crop scalp underlay so ponytail/fringe sits on a real head of hair (not a floating ribbon).
+    if (scalpImg && sheetReady(scalpImg) && scalpImg !== hairImg) {
+      const scalp = tintToColor(extractFixedCell(scalpImg, dir), hairColor);
+      const sctx = scalp.getContext("2d")!;
+      sctx.globalCompositeOperation = "destination-in";
+      sctx.fillStyle = "rgba(0,0,0,0.62)";
+      sctx.fillRect(0, 0, scalp.width, scalp.height);
+      sctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(scalp, 0, 0);
+    }
+    ctx.drawImage(tintToColor(extractFixedCell(hairImg, dir), hairColor), 0, 0);
   }
   if (accessoryOk && accessoryImg) ctx.drawImage(extractFixedCell(accessoryImg, dir), 0, 0);
 
@@ -592,20 +611,21 @@ export function drawAppearance(
   sitLift = 0,
 ) {
   try {
-    const frame = composeAvatar(a, dir, action);
+    const frame = composeAvatar(a, dir, action, phase);
     if (frame) {
-      const bob = action === "dance" ? Math.abs(Math.sin(t * 10)) * 3 : action === "walk" ? Math.abs(Math.sin(phase)) * 2.5 : 0;
-      const sway = action === "walk" ? Math.sin(phase) * 0.035 : action === "dance" ? Math.sin(t * 8) * 0.07 : Math.sin(t * 1.8) * 0.012;
+      const walk = action === "walk";
+      const bob = action === "dance" ? Math.abs(Math.sin(t * 10)) * 3 : walk ? Math.abs(Math.sin(phase)) * 4.2 : 0;
+      const sway = walk ? Math.sin(phase) * 0.055 : action === "dance" ? Math.sin(t * 8) * 0.07 : Math.sin(t * 1.8) * 0.012;
+      const stretch = walk ? 1 + Math.sin(phase * 2) * 0.03 : 1;
       const breathe = action === "idle" ? 1 + Math.sin(t * 2.2) * 0.012 : 1;
       const sitting = action === "sit";
       const h = sitting ? 72 : 78;
       const w = (frame.width / frame.height) * h;
-      // Sit sprites already include dangling legs; keep the foot near the seat plane.
       const foot = sitting ? 2 : 10;
       ctx.save();
       ctx.translate(ox, oy + foot - sitLift - bob);
       ctx.rotate(sway);
-      ctx.scale(1, breathe);
+      ctx.scale(stretch, breathe / stretch);
       ctx.drawImage(frame, -w / 2, -h, w, h);
       ctx.restore();
       return;
