@@ -70,7 +70,7 @@ function loadActionSheets(category: "top" | "bottom" | "shoes" | "hair" | "acces
     const img = new Image();
     img.decoding = "async";
     img.addEventListener("load", () => frameCache.clear());
-    img.src = `/coke-music/art/avatar/generated/${category}/${body}/${assetSlug(style)}/${action}.png?v=10`;
+    img.src = `/coke-music/art/avatar/generated/${category}/${body}/${assetSlug(style)}/${action}.png?v=11`;
     set[action] = img;
   }
   return set;
@@ -114,7 +114,7 @@ function actionSheet(set: AvatarSheets, action: Actor["action"]) {
 /** Two-pose stride without a full walk-cycle rewrite: planted idle ↔ mid-stride walk. */
 function strideAction(action: Actor["action"], phase: number): Actor["action"] {
   if (action !== "walk") return action;
-  return Math.sin(phase) >= 0 ? "walk" : "idle";
+  return Math.sin(phase) > 0.2 ? "walk" : "idle";
 }
 
 function remapCanvas(c: HTMLCanvasElement, a: Appearance): HTMLCanvasElement {
