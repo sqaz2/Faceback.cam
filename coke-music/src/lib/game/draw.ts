@@ -110,10 +110,71 @@ function actionSheet(set: AvatarSheets, action: Actor["action"]) {
   return action === "sit" ? set.sit : action === "walk" ? set.walk : action === "dance" || action === "wave" ? set.dance : set.idle;
 }
 
-/** Two-pose stride without a full walk-cycle rewrite: planted idle ↔ mid-stride walk. */
+/**
+ * Walk sheets are 4-dir × 1 pose (idle = planted, walk = mid-stride). There are no
+ * extra in-between frames in the art — fake frames would lie. Instead we drive a
+ * clearer 4-beat cycle off walkPhase: plant → push → mid → recover, swapping the
+ * two sheets on an asymmetric duty curve and selling the gaps with lean/bob/squash.
+ */
+export type StrideBeat = "plant" | "push" | "mid" | "recover";
+
+/** Fold continuous walkPhase into one step cycle in [0, 1). */
+export function strideCycle(phase: number): number {
+  const u = (phase / (Math.PI * 2)) % 1;
+  return u < 0 ? u + 1 : u;
+}
+
+/** Asymmetric beats: short plant, weight push, held mid-stride, recover into plant. */
+export function strideBeat(phase: number): StrideBeat {
+  const u = strideCycle(phase);
+  if (u < 0.16) return "plant";
+  if (u < 0.34) return "push";
+  if (u < 0.68) return "mid";
+  return "recover";
+}
+
 function strideAction(action: Actor["action"], phase: number): Actor["action"] {
   if (action !== "walk") return action;
-  return Math.sin(phase) > 0.2 ? "walk" : "idle";
+  const beat = strideBeat(phase);
+  // Idle sheet = feet planted; walk sheet = legs apart. Push stays on idle so the
+  // weight-shift reads before the mid-stride flash; recover keeps the stride sheet.
+  return beat === "plant" || beat === "push" ? "idle" : "walk";
+}
+
+/** Screen-space lean toward facing (isometric +x down-right, +y down-left). */
+function facingLeanX(dir: number, beat: StrideBeat): number {
+  const amp = beat === "push" || beat === "mid" ? 2.6 : beat === "recover" ? 1.3 : 0.5;
+  const sx = dir === 0 ? 1 : dir === 2 ? -1 : dir === 1 ? -0.65 : 0.65;
+  return sx * amp;
+}
+
+function walkMotion(phase: number, dir: number) {
+  const beat = strideBeat(phase);
+  const u = strideCycle(phase);
+  // Ease inside each beat so plant doesn't pop and mid holds longer visually.
+  const bob =
+    beat === "plant"
+      ? 0.4
+      : beat === "push"
+        ? 1.2 + (u - 0.16) / 0.18 * 2.4
+        : beat === "mid"
+          ? 4.0 + Math.sin(((u - 0.34) / 0.34) * Math.PI) * 1.1
+          : 2.2 * (1 - (u - 0.68) / 0.32);
+  const sway =
+    beat === "plant"
+      ? Math.sin(phase) * 0.012
+      : beat === "push"
+        ? 0.04 + (u - 0.16) / 0.18 * 0.03
+        : beat === "mid"
+          ? Math.sin(phase) * 0.07
+          : Math.sin(phase) * 0.035;
+  const stretchX =
+    beat === "plant" ? 1.04 : beat === "push" ? 0.97 : beat === "mid" ? 1.02 : 0.99;
+  const stretchY =
+    beat === "plant" ? 0.96 : beat === "push" ? 1.05 : beat === "mid" ? 1.01 : 0.98;
+  const plantShadow =
+    beat === "plant" ? 0.32 : beat === "recover" ? 0.14 : beat === "push" ? 0.08 : 0;
+  return { beat, bob, sway, stretchX, stretchY, leanX: facingLeanX(dir, beat), plantShadow };
 }
 
 function remapCanvas(c: HTMLCanvasElement, a: Appearance): HTMLCanvasElement {
@@ -663,20 +724,36 @@ export function drawAppearance(
     const frame = composeAvatar(a, dir, action, phase);
     if (frame) {
       const walk = action === "walk";
-      const bob = action === "dance" ? Math.abs(Math.sin(t * 10)) * 3 : walk ? Math.abs(Math.sin(phase)) * 4.2 : 0;
-      const sway = walk ? Math.sin(phase) * 0.055 : action === "dance" ? Math.sin(t * 8) * 0.07 : Math.sin(t * 1.8) * 0.012;
-      const stretch = walk ? 1 + Math.sin(phase * 2) * 0.03 : 1;
+      const motion = walk ? walkMotion(phase, dir) : null;
+      const bob = action === "dance" ? Math.abs(Math.sin(t * 10)) * 3 : motion ? motion.bob : 0;
+      const sway = motion
+        ? motion.sway
+        : action === "dance"
+          ? Math.sin(t * 8) * 0.07
+          : Math.sin(t * 1.8) * 0.012;
+      const stretchX = motion ? motion.stretchX : walk ? 1 + Math.sin(phase * 2) * 0.03 : 1;
+      const stretchY = motion ? motion.stretchY : 1;
       const breathe = action === "idle" ? 1 + Math.sin(t * 2.2) * 0.012 : 1;
+      const leanX = motion ? motion.leanX : 0;
       const sitting = action === "sit";
       const h = sitting ? 62 : 78;
       const w = (frame.width / frame.height) * h;
       // Sitting: smaller foot push + clip toes so they nestle on the cushion
       // instead of peeking under the sofa lip (Habbo-like hang is OK; under-peek is not).
       const foot = sitting ? 0 : 10;
+      // Soft contact shadow sells the plant beat without inventing foot frames.
+      if (motion && motion.plantShadow > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgba(20, 8, 10, ${motion.plantShadow})`;
+        ctx.beginPath();
+        ctx.ellipse(ox + leanX * 0.35, oy + foot + 3, 13, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.save();
-      ctx.translate(ox, oy + foot - sitLift - bob);
+      ctx.translate(ox + leanX, oy + foot - sitLift - bob);
       ctx.rotate(sway);
-      ctx.scale(stretch, breathe / stretch);
+      ctx.scale(stretchX, (breathe * stretchY) / stretchX);
       if (sitting) {
         const hide = Math.round(h * 0.32);
         ctx.beginPath();
