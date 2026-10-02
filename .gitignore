@@ -8,3 +8,7 @@ dist/
 !.env.example
 .DS_Store
 tsconfig.tsbuildinfo
+
+qa-out/
+.wrangler/
+.sites-runtime/

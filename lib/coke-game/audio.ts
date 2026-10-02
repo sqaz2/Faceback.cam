@@ -717,6 +717,7 @@ function n2f(semi: number, root = 110) {
 type MixState = {
   genre: string;
   clips: [string | null, string | null, string | null, string | null];
+  muted: [boolean, boolean, boolean, boolean];
   playing: boolean;
   nextBar: number;
   barIndex: number;
@@ -726,6 +727,7 @@ type MixState = {
 const mix: MixState = {
   genre: "pop",
   clips: [null, null, null, null],
+  muted: [false, false, false, false],
   playing: false,
   nextBar: 0,
   barIndex: 0,
@@ -751,6 +753,28 @@ export function setMixClips(clips: MixState["clips"]) {
   mix.clips = [...clips] as MixState["clips"];
 }
 
+export function setTrackMuted(track: 0 | 1 | 2 | 3, muted: boolean) {
+  mix.muted[track] = muted;
+}
+
+export function toggleTrackMuted(track: 0 | 1 | 2 | 3) {
+  mix.muted[track] = !mix.muted[track];
+  return mix.muted[track];
+}
+
+/** Pick a fresh genre + one clip per lane for the "surprise mix" button. */
+export function surpriseMix() {
+  const genres = GENRES.map((g) => g.id);
+  mix.genre = genres[Math.floor(Math.random() * genres.length)] ?? "pop";
+  const pack = DEFAULT_CLIPS[mix.genre] ?? DEFAULT_CLIPS.pop;
+  mix.clips = [...pack!] as MixState["clips"];
+  mix.muted = [false, false, false, false];
+  if (delayNode && ctx) {
+    delayNode.delayTime.setTargetAtTime(delayFor(), ctx.currentTime, 0.05);
+  }
+  return { genre: mix.genre, clips: [...mix.clips] as MixState["clips"] };
+}
+
 function bpmOf() {
   return GENRES.find((g) => g.id === mix.genre)?.bpm ?? 118;
 }
@@ -771,8 +795,13 @@ function delayFor() {
 }
 
 function activeClips() {
-  if (mix.clips.some(Boolean)) return mix.clips;
-  return DEFAULT_CLIPS[mix.genre] ?? DEFAULT_CLIPS.pop;
+  const base = mix.clips.some(Boolean) ? mix.clips : (DEFAULT_CLIPS[mix.genre] ?? DEFAULT_CLIPS.pop)!;
+  return [
+    mix.muted[0] ? null : base[0],
+    mix.muted[1] ? null : base[1],
+    mix.muted[2] ? null : base[2],
+    mix.muted[3] ? null : base[3],
+  ] as MixState["clips"];
 }
 
 function velLine(s: string): number[] {

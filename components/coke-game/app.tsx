@@ -121,9 +121,11 @@ function CreateVego() {
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Create your character</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foam">First impressions</h1>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,280px)_1fr]">
+      {/* Sticky inside .coke-place-shell scrollport so the V-Ego stays on screen while picking clothes. */}
+      <div className="sticky top-0 z-20 -mx-4 border-b border-border/60 bg-ink/95 px-4 py-2 backdrop-blur-md sm:-mx-8 sm:px-8">
         <AvatarPreview appearance={appearance} />
-        <div className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
           <label className="block">
             <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Name</span>
             <input
@@ -218,7 +220,6 @@ function CreateVego() {
               Enter room
             </Button>
           </div>
-        </div>
       </div>
     </div>
   );
