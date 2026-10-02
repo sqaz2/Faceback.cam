@@ -45,3 +45,9 @@ This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Kee
 
 - Tail/Bangs overlays re-extracted from cyan master sheets (`scripts/reextract-hair-overlays.py`) with Crop scalp underlay in compose.
 - Walk uses a 2-pose stride (idle ↔ walk sheets) + stronger bob/sway — not a full multi-frame cycle.
+
+## Accessory polish (2026-10-02)
+
+- Cap / Shades / Headphones overlays re-extracted from red master sheets (`scripts/reextract-accessory-overlays.py`) with head-band connected-component filters (no body leak / blob).
+- Walk stride duty cycle slightly favors planted idle (`sin(phase) > 0.2`).
+- Wardrobe cache-bust `?v=11`.
