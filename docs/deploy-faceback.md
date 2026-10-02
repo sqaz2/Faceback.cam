@@ -40,3 +40,8 @@ QA_BASE=http://127.0.0.1:5173/world node scripts/qa-sit-world.mjs
 ## Pages vs Workers
 
 This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Keep any old Pages Coke Music tribute clearly named so it is never confused with FACEBACK.CAM.
+
+## Hair / walk polish (2026-10-02)
+
+- Tail/Bangs overlays re-extracted from cyan master sheets (`scripts/reextract-hair-overlays.py`) with Crop scalp underlay in compose.
+- Walk uses a 2-pose stride (idle ↔ walk sheets) + stronger bob/sway — not a full multi-frame cycle.
