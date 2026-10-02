@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/coke-game/button";
 import { CLIPS, GENRES, TRACKS } from "@/lib/coke-game/data";
 import {
+  burnDiscSfx,
   getMix,
   getSpectrum,
   isMixPlaying,
@@ -10,7 +11,6 @@ import {
   setMixClips,
   setMixGenre,
   sfxClick,
-  sfxWin,
   startMix,
   stopMix,
   surpriseMix,
@@ -28,8 +28,16 @@ export function MixerPanel() {
   const [, bump] = useState(0);
   const [title, setTitle] = useState("Untitled Mix");
   const mix = getMix();
+  const playing = isMixPlaying();
+  const genreMeta = GENRES.find((g) => g.id === mix.genre);
 
   const refresh = () => bump((n) => n + 1);
+
+  useEffect(() => {
+    if (!playing) return;
+    const id = window.setInterval(() => bump((n) => n + 1), 400);
+    return () => window.clearInterval(id);
+  }, [playing]);
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
@@ -37,7 +45,7 @@ export function MixerPanel() {
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted">Studio Mixer</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight text-foam">Publish a mix</h2>
-          <p className="mt-1 text-sm text-muted">Build with loops, preview it live, then publish it for rooms and stages.</p>
+          <p className="mt-1 text-sm text-muted">Build with loops, preview with vinyl ducking, then burn a disc for rooms and stages.</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setOverlay(null)}>
           Close
@@ -60,11 +68,14 @@ export function MixerPanel() {
             )}
           >
             {g.name}
+            <span className={cn("ml-1.5 text-[10px] uppercase tracking-wider", mix.genre === g.id ? "text-foam/75" : "text-muted")}>
+              {g.bpm}
+            </span>
           </button>
         ))}
       </div>
 
-      <SpectrumBars />
+      <SpectrumBars playing={playing} genre={mix.genre} bpm={genreMeta?.bpm ?? 118} />
 
       <div className="grid gap-3">
         {TRACKS.map((track, ti) => {
@@ -157,13 +168,13 @@ export function MixerPanel() {
             variant="cream"
             onClick={() => {
               unlockAudio();
-              if (isMixPlaying()) stopMix();
+              if (playing) stopMix();
               else startMix();
               refresh();
             }}
           >
-            {isMixPlaying() ? <Square className="size-4" /> : <Play className="size-4" />}
-            {isMixPlaying() ? "Stop" : "Play"}
+            {playing ? <Square className="size-4" /> : <Play className="size-4" />}
+            {playing ? "Stop" : "Play mix"}
           </Button>
           <Button
             onClick={() => {
@@ -178,12 +189,12 @@ export function MixerPanel() {
                 clips: [...mix.clips] as Mix["clips"],
                 createdAt: Date.now(),
               });
-              sfxWin();
-              setToast(replaced ? "Mix published. Your oldest mix was replaced." : "Mix published. Play it in a room or on a stage.");
+              burnDiscSfx();
+              setToast(replaced ? "Disc burned. Oldest mix was replaced — drop it on a jukebox or stage." : "Disc burned. Drop it on a jukebox or take the stage.");
             }}
           >
             <Sparkles className="size-4" />
-            Publish mix
+            Burn disc
           </Button>
         </div>
       </div>
@@ -222,7 +233,7 @@ export function MixerPanel() {
 
 type Mix = import("@/lib/coke-game/types").Mix;
 
-function SpectrumBars() {
+function SpectrumBars({ playing, genre, bpm }: { playing: boolean; genre: string; bpm: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const buf = useRef(new Uint8Array(32));
 
@@ -234,7 +245,7 @@ function SpectrumBars() {
         const kids = el.children;
         for (let i = 0; i < kids.length; i++) {
           const v = buf.current[i + 2] ?? 0;
-          const h = 6 + (v / 255) * 42;
+          const h = 6 + (v / 255) * (playing ? 46 : 28);
           (kids[i] as HTMLElement).style.height = `${h}px`;
         }
       }
@@ -242,21 +253,32 @@ function SpectrumBars() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [playing]);
 
   return (
     <div
-      ref={ref}
-      className="flex h-12 items-end gap-[3px] rounded-[14px] border border-border bg-ink-mid px-3 py-1.5"
-      aria-hidden
+      className={cn(
+        "rounded-[14px] border px-3 py-2 transition-colors",
+        playing ? "border-coke/70 bg-coke/10 shadow-[0_0_24px_rgba(230,26,39,0.18)]" : "border-border bg-ink-mid",
+      )}
     >
-      {Array.from({ length: 22 }, (_, i) => (
-        <span
-          key={i}
-          className="w-[6px] rounded-full bg-coke/85"
-          style={{ height: 6 }}
-        />
-      ))}
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+          {playing ? "Vinyl + mix live" : "Preview meters"}
+        </p>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-foam/80">
+          {genre} · {bpm} bpm
+        </p>
+      </div>
+      <div ref={ref} className="flex h-12 items-end gap-[3px]" aria-hidden>
+        {Array.from({ length: 22 }, (_, i) => (
+          <span
+            key={i}
+            className={cn("w-[6px] rounded-full", playing ? "bg-coke" : "bg-coke/70")}
+            style={{ height: 6 }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

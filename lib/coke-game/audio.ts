@@ -16,6 +16,7 @@ let vinylBuf: AudioBuffer | null = null;
 let loungeTimer: number | null = null;
 let loungeOn = false;
 let vinylSrc: AudioBufferSourceNode | null = null;
+let vinylGain: GainNode | null = null;
 const VISIBLE_LOOKAHEAD = 1.4;
 const HIDDEN_LOOKAHEAD = 3.5;
 
@@ -323,7 +324,7 @@ function kick(t: number, dest: AudioNode, vel = 1) {
   click.stop(t + 0.03);
 
   noiseHit(t, dest, 0.035, 0.1 * vel, "highpass", 2200, 0.5);
-  duck(t, 0.38, 0.22);
+  duck(t, 0.32, 0.26);
 }
 
 function eightOhEight(t: number, dest: AudioNode, freq: number, dur: number, vel: number) {
@@ -678,7 +679,7 @@ const DEFAULT_CLIPS: Record<string, [string, string, string, string]> = {
   pop: ["four", "pulse", "keys", "ahhs"],
   hiphop: ["boom", "deep", "keys", "hook"],
   disco: ["four", "funk", "synth", "ahhs"],
-  rock: ["four", "root", "lead", "stabs"],
+  rock: ["break", "root", "lead", "stabs"],
   latin: ["skip", "funk", "pluck", "call"],
   chill: ["clap", "deep", "bells", "shimmer"],
 };
@@ -976,7 +977,7 @@ function scheduleBar(start: number, dest: AudioNode, barIndex: number) {
   if (melody) {
     const chordFreqs = chord.map((n) => n2f(n, root * 2));
     const hook = (HOOKS[mix.genre] ?? HOOKS.pop)![barIndex % 2]!;
-    const energy = chorus ? 1 : 0.78;
+    const energy = (chorus ? 1.08 : 0.86) * (mix.genre === "disco" || mix.genre === "rock" ? 1.06 : mix.genre === "chill" ? 0.92 : 1);
     if (melody === "keys") {
       rhodes(tAt(0), melDest, chordFreqs, step * (chorus ? 7 : 6), 0.26 * energy);
       rhodes(tAt(8), melDest, chordFreqs, step * 5, 0.18 * energy);
@@ -1078,8 +1079,16 @@ export function startMix() {
   }
   if (delayNode) delayNode.delayTime.setTargetAtTime(delayFor(), ctx.currentTime, 0.02);
   if (delaySend) {
-    delaySend.gain.setTargetAtTime(mix.genre === "chill" ? 0.32 : mix.genre === "disco" ? 0.26 : 0.18, ctx.currentTime, 0.05);
+    const wet =
+      mix.genre === "chill" ? 0.36 :
+      mix.genre === "disco" ? 0.3 :
+      mix.genre === "hiphop" ? 0.22 :
+      mix.genre === "latin" ? 0.24 :
+      0.2;
+    delaySend.gain.setTargetAtTime(wet, ctx.currentTime, 0.05);
   }
+  // Soft vinyl under the mix (ducks with kicks) so jukebox / burn-disc feels less sterile.
+  ensureVinylPresence(mix.genre === "chill" ? 0.055 : mix.genre === "hiphop" ? 0.048 : 0.038);
   mix.playing = true;
   mix.barIndex = 0;
   mix.nextBar = ctx.currentTime + 0.05;
@@ -1097,6 +1106,7 @@ export function stopMix() {
   // bars that were already queued by Web Audio.
   resetMixSourceBus();
   if (ctx && duckGain) duckGain.gain.setTargetAtTime(1, ctx.currentTime, 0.05);
+  ensureVinylPresence(0.05);
   startLounge();
 }
 
@@ -1140,21 +1150,55 @@ function loungeTick() {
   loungeTimer = window.setTimeout(loungeTick, 2800);
 }
 
+
+/** Keep a soft vinyl bed under lounge / mix. Routed through duckGain so kicks pump it. */
+function ensureVinylPresence(level: number) {
+  if (!ctx || !vinylBuf) return;
+  if (!vinylSrc) {
+    vinylSrc = ctx.createBufferSource();
+    vinylSrc.buffer = vinylBuf;
+    vinylSrc.loop = true;
+    vinylGain = ctx.createGain();
+    vinylGain.gain.value = Math.max(0.0001, level);
+    vinylSrc.connect(vinylGain);
+    const dest = duckGain ?? musicBus ?? master;
+    if (!dest) return;
+    vinylGain.connect(dest);
+    vinylSrc.start();
+  } else if (vinylGain) {
+    vinylGain.gain.cancelScheduledValues(ctx.currentTime);
+    vinylGain.gain.setTargetAtTime(Math.max(0.0001, level), ctx.currentTime, 0.18);
+  }
+}
+
+function sfxDiscBurn() {
+  if (!ctx || !destSfx()) return;
+  const t = ctx.currentTime;
+  // Soft whoosh + click — "burn a disc" without trademarked samples.
+  noiseHit(t, destSfx()!, 0.42, 0.16, "bandpass", 1800, 0.7);
+  noiseHit(t + 0.05, destSfx()!, 0.28, 0.1, "highpass", 4200, 0.55);
+  const o = ctx.createOscillator();
+  o.type = "triangle";
+  o.frequency.setValueAtTime(660, t);
+  o.frequency.exponentialRampToValueAtTime(220, t + 0.28);
+  const g = envGain(t, 0.01, 0.3, 0.12);
+  if (!g) return;
+  o.connect(g);
+  g.connect(destSfx()!);
+  o.start(t);
+  o.stop(t + 0.34);
+}
+
+export function burnDiscSfx() {
+  sfxDiscBurn();
+}
+
 export function startLounge() {
   unlockAudio();
   if (!ctx || !loungeBus || loungeOn || mix.playing) return;
   loungeOn = true;
   loungeBus.gain.setTargetAtTime(0.5, ctx.currentTime, 0.4);
-  if (vinylBuf && !vinylSrc) {
-    vinylSrc = ctx.createBufferSource();
-    vinylSrc.buffer = vinylBuf;
-    vinylSrc.loop = true;
-    const vg = ctx.createGain();
-    vg.gain.value = 0.07;
-    vinylSrc.connect(vg);
-    vg.connect(loungeBus);
-    vinylSrc.start();
-  }
+  ensureVinylPresence(0.075);
   loungeTick();
 }
 

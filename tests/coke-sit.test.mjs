@@ -40,3 +40,22 @@ test("chair single seat stays near furniture center", () => {
   assert.ok(Math.abs(p.x - (3 + 0.1)) < 0.001);
   assert.ok(Math.abs(p.y - (8 + 0.1)) < 0.001);
 });
+
+test("booth two-seat slots share screen depth like sofa", () => {
+  const booth = { x: 1, y: 2 };
+  const cat = { w: 2, d: 1, seats: 2, sitY: 0.14, sitSpread: 0.92 };
+  const a = seatWorldPos(booth, 0, cat);
+  const b = seatWorldPos(booth, 1, cat);
+  const sa = screen(a.x, a.y);
+  const sb = screen(b.x, b.y);
+  assert.ok(Math.abs(sa.y - sb.y) < 0.01, `sy drifted: ${sa.y} vs ${sb.y}`);
+  assert.ok(Math.abs(sa.x - sb.x) > 20, `sx spread too small: ${Math.abs(sa.x - sb.x)}`);
+});
+
+test("bean single seat nests with positive depth", () => {
+  const bean = { x: 2, y: 8 };
+  const cat = { w: 1, d: 1, seats: 1, sitY: 0.2 };
+  const p = seatWorldPos(bean, 0, cat);
+  assert.ok(Math.abs(p.x - (2 + 0.2)) < 0.001);
+  assert.ok(Math.abs(p.y - (8 + 0.2)) < 0.001);
+});

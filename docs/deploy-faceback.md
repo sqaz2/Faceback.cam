@@ -57,3 +57,8 @@ This app is **not** a static Pages site (RSC + optional D1). Prefer Workers. Kee
 - Sofa/chair `sitLift` + sit foot clip so feet nestle on cushions (no under-sofa peek).
 - Shades re-extract: thicken eye-band + lens/gloss remap so they read as glasses.
 - Woman headphones sit nudged down slightly. Wardrobe cache-bust `?v=12`.
+
+## Booth / bean / mixer polish (2026-10-02)
+
+- Booth + bean (+ stool) sitLift/sitY retuned to match sofa/chair nestle; seat apron is per-furniture (booth burgundy, bean oval).
+- Mixer: vinyl bed under mixes (ducks with kicks), clearer clip labels, BPM chips, live meters, **Burn disc** feedback.
